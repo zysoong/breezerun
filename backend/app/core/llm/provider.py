@@ -97,20 +97,27 @@ class LLMProvider:
     async def generate_stream(
         self,
         messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Dict[str, Any]]:
         """
         Generate streaming completion from LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content'
+            tools: Optional list of tools for function calling
             **kwargs: Additional parameters for the completion
 
         Yields:
-            Text chunks as they arrive
+            Text chunks as they arrive, or function call dicts
         """
         params = {**self.config, **kwargs}
         model_name = self._build_model_name()
+
+        # Add tools to params if provided
+        if tools:
+            params['tools'] = tools
+            params['tool_choice'] = 'auto'
 
         try:
             response = await acompletion(
@@ -124,8 +131,21 @@ class LLMProvider:
                 # Extract content from the chunk
                 if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
+
+                    # Handle text content
                     if hasattr(delta, 'content') and delta.content:
                         yield delta.content
+
+                    # Handle function calls
+                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                        for tool_call in delta.tool_calls:
+                            if hasattr(tool_call, 'function'):
+                                yield {
+                                    "function_call": {
+                                        "name": tool_call.function.name,
+                                        "arguments": tool_call.function.arguments,
+                                    }
+                                }
 
         except Exception as e:
             raise Exception(f"LLM streaming failed: {str(e)}")

@@ -19,9 +19,12 @@ export default function ChatView({ session }: ChatViewProps) {
   const {
     streamingMessage,
     isStreaming,
+    agentActions,
     appendStreamingMessage,
     setStreaming,
     clearStreamingMessage,
+    addAgentAction,
+    clearAgentActions,
   } = useChatStore();
 
   // Fetch messages
@@ -39,12 +42,43 @@ export default function ChatView({ session }: ChatViewProps) {
         case 'start':
           setStreaming(true);
           clearStreamingMessage();
+          clearAgentActions();
           break;
 
         case 'chunk':
           if (message.content) {
             appendStreamingMessage(message.content);
           }
+          break;
+
+        case 'thought':
+          if (message.content) {
+            appendStreamingMessage(message.content);
+            addAgentAction({
+              type: 'thought',
+              content: message.content,
+              step: message.step,
+            });
+          }
+          break;
+
+        case 'action':
+          addAgentAction({
+            type: 'action',
+            content: `Using tool: ${message.tool}`,
+            tool: message.tool,
+            args: message.args,
+            step: message.step,
+          });
+          break;
+
+        case 'observation':
+          addAgentAction({
+            type: 'observation',
+            content: message.content || '',
+            success: message.success,
+            step: message.step,
+          });
           break;
 
         case 'end':
@@ -96,6 +130,7 @@ export default function ChatView({ session }: ChatViewProps) {
         messages={messages}
         streamingMessage={streamingMessage}
         isStreaming={isStreaming}
+        agentActions={agentActions}
       />
 
       <MessageInput

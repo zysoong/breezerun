@@ -12,7 +12,11 @@
       "Bash(CHAT_ID=\"788de109-52ce-42e1-bc38-df28412f9d9f\")",
       "Bash(/tmp/test_script.py)",
       "Bash(docker:*)",
-      "Bash(npm --version:*)"
+      "Bash(npm --version:*)",
+      "Bash(python -c \"\nfrom app.core.agent.tools import Tool, ToolRegistry, BashTool, FileReadTool, FileWriteTool, FileEditTool\nfrom app.core.agent.executor import ReActAgent\nprint(''✓ All agent imports successful'')\n\")",
+      "Bash(python /tmp/test_agent_system.py:*)",
+      "Bash(python -c:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

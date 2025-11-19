@@ -1,7 +1,11 @@
 export interface ChatMessage {
-  type: 'message' | 'chunk' | 'start' | 'end' | 'error' | 'user_message_saved';
+  type: 'message' | 'chunk' | 'start' | 'end' | 'error' | 'user_message_saved' | 'thought' | 'action' | 'observation';
   content?: string;
   message_id?: string;
+  tool?: string;
+  args?: any;
+  success?: boolean;
+  step?: number;
 }
 
 export class ChatWebSocket {
