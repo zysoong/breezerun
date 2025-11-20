@@ -29,7 +29,8 @@
       "Bash(python migrations/migrate_environment_to_sessions.py:*)",
       "Bash(npm run build:*)",
       "WebSearch",
-      "Bash(poetry add:*)"
+      "Bash(poetry add:*)",
+      "WebFetch(domain:platform.openai.com)"
     ],
     "deny": [],
     "ask": []

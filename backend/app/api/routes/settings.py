@@ -125,9 +125,17 @@ async def test_api_key(
 
     try:
         # Create a temporary LLM provider with the test key
+        # Use cheapest/fastest models for testing
+        model_map = {
+            "openai": "gpt-4o-mini",  # Cheapest for testing
+            "anthropic": "claude-haiku-4-5",  # Latest Haiku (fast)
+            "azure": "gpt-4o-mini",
+        }
+        model = model_map.get(test_data.provider, "gpt-4o-mini")
+
         provider = LLMProvider(
             provider=test_data.provider,
-            model="gpt-3.5-turbo" if test_data.provider == "openai" else "claude-3-haiku-20240307",
+            model=model,
             api_key=test_data.api_key,
             temperature=0.1,
             max_tokens=10,

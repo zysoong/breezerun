@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # LLM Defaults
     default_llm_provider: str = "openai"
-    default_llm_model: str = "gpt-4"
+    default_llm_model: str = "gpt-5-2025-08-07"  # Latest OpenAI model (GPT-5)
 
     # API Key Encryption
     master_encryption_key: str | None = None

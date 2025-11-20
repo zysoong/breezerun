@@ -33,9 +33,54 @@ const AVAILABLE_TOOLS = [
 ];
 
 const LLM_PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', models: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-  { id: 'anthropic', name: 'Anthropic', models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'] },
-  { id: 'azure', name: 'Azure OpenAI', models: ['gpt-4', 'gpt-35-turbo'] },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    models: [
+      // GPT-5 Series (August 2025 - Latest)
+      'gpt-5-2025-08-07',              // GPT-5 flagship
+      'gpt-5-mini-2025-08-07',         // GPT-5 mini
+      // GPT-4.1 Series (April 2025)
+      'gpt-4.1-2025-04-14',            // GPT-4.1 flagship
+      'gpt-4.1-mini-2025-04-14',       // GPT-4.1 mini
+      'gpt-4.1-nano-2025-04-14',       // GPT-4.1 nano (smallest)
+      // Reasoning Models (o-series)
+      'o3-2025-04-16',                 // o3 reasoning
+      'o3-mini',                       // o3 mini reasoning
+      'o4-mini-2025-04-16',            // o4-mini reasoning
+      // GPT-4o Series (Still available)
+      'gpt-4o',                        // GPT-4o multimodal
+      'gpt-4o-mini',                   // GPT-4o mini
+      'gpt-4-turbo',                   // GPT-4 Turbo (legacy)
+    ]
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    models: [
+      // Claude 4.5 Series (Latest - Nov 2025)
+      'claude-sonnet-4-5-20250929',    // Sonnet 4.5 (most capable)
+      'claude-haiku-4-5-20251001',     // Haiku 4.5 (fast)
+      // Claude 4.1 Series (Aug 2025)
+      'claude-opus-4-1-20250805',      // Opus 4.1 (agentic tasks)
+      // Aliases (auto-update to latest)
+      'claude-sonnet-4-5',             // Sonnet 4.5 alias
+      'claude-haiku-4-5',              // Haiku 4.5 alias
+      'claude-opus-4-1',               // Opus 4.1 alias
+    ]
+  },
+  {
+    id: 'azure',
+    name: 'Azure OpenAI',
+    models: [
+      'gpt-5-2025-08-07',
+      'gpt-4.1-2025-04-14',
+      'gpt-4o',
+      'gpt-4-turbo',
+      'gpt-4',
+      'gpt-35-turbo'
+    ]
+  },
 ];
 
 export default function AgentConfigPanel({ projectId }: AgentConfigPanelProps) {

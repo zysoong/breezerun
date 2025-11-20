@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.storage.database import get_db
-from app.models.database import Project, AgentConfiguration
+from app.models.database import Project, AgentConfiguration, ChatSession
 from app.models.schemas import (
     ProjectCreate,
     ProjectUpdate,
@@ -14,6 +14,9 @@ from app.models.schemas import (
     ProjectListResponse,
     AgentConfigurationResponse,
     AgentConfigurationUpdate,
+    ChatSessionCreate,
+    ChatSessionResponse,
+    ChatSessionListResponse,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -62,7 +65,7 @@ async def create_project(
         agent_type="code_agent",
         enabled_tools=["bash", "file_read", "file_write", "file_edit", "search"],
         llm_provider="openai",
-        llm_model="gpt-4",
+        llm_model="gpt-5-2025-08-07",  # Latest OpenAI model (GPT-5)
         llm_config={"temperature": 0.7, "max_tokens": 4096},
     )
     db.add(agent_config)
@@ -273,3 +276,77 @@ async def apply_agent_template(
     await db.refresh(config)
 
     return AgentConfigurationResponse.model_validate(config)
+
+
+# Chat Session endpoints (nested under projects)
+@router.post("/{project_id}/chat-sessions", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
+async def create_chat_session(
+    project_id: str,
+    session_data: ChatSessionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new chat session for a project."""
+    # Verify project exists
+    project_query = select(Project).where(Project.id == project_id)
+    project_result = await db.execute(project_query)
+    project = project_result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id {project_id} not found",
+        )
+
+    # Create chat session
+    session = ChatSession(
+        project_id=project_id,
+        name=session_data.name,
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    return ChatSessionResponse.model_validate(session)
+
+
+@router.get("/{project_id}/chat-sessions", response_model=ChatSessionListResponse)
+async def list_project_chat_sessions(
+    project_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all chat sessions for a project."""
+    # Verify project exists
+    project_query = select(Project).where(Project.id == project_id)
+    project_result = await db.execute(project_query)
+    project = project_result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id {project_id} not found",
+        )
+
+    # Get total count
+    count_query = select(func.count()).select_from(ChatSession).where(
+        ChatSession.project_id == project_id
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
+
+    # Get chat sessions
+    query = (
+        select(ChatSession)
+        .where(ChatSession.project_id == project_id)
+        .offset(skip)
+        .limit(limit)
+        .order_by(ChatSession.created_at.desc())
+    )
+    result = await db.execute(query)
+    sessions = result.scalars().all()
+
+    return ChatSessionListResponse(
+        chat_sessions=[ChatSessionResponse.model_validate(s) for s in sessions],
+        total=total,
+    )
