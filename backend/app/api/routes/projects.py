@@ -60,9 +60,7 @@ async def create_project(
     agent_config = AgentConfiguration(
         project_id=project.id,
         agent_type="code_agent",
-        environment_type="python3.11",
-        environment_config={},
-        enabled_tools=["bash", "file_read", "file_write", "file_edit"],
+        enabled_tools=["bash", "file_read", "file_write", "file_edit", "search"],
         llm_provider="openai",
         llm_model="gpt-4",
         llm_config={"temperature": 0.7, "max_tokens": 4096},

@@ -12,15 +12,12 @@ interface AgentTemplate {
   name: string;
   description: string;
   agent_type: string;
-  environment_type: string;
   enabled_tools: string[];
 }
 
 interface AgentConfig {
   agent_type: string;
   system_instructions: string | null;
-  environment_type: string;
-  environment_config: Record<string, any>;
   enabled_tools: string[];
   llm_provider: string;
   llm_model: string;
@@ -32,12 +29,7 @@ const AVAILABLE_TOOLS = [
   { id: 'file_read', name: 'File Read', description: 'Read file contents' },
   { id: 'file_write', name: 'File Write', description: 'Create/overwrite files' },
   { id: 'file_edit', name: 'File Edit', description: 'Edit existing files' },
-];
-
-const ENVIRONMENT_TYPES = [
-  { id: 'python3.11', name: 'Python 3.11', description: 'Python 3.11 with common packages' },
-  { id: 'python3.12', name: 'Python 3.12', description: 'Python 3.12 with common packages' },
-  { id: 'node20', name: 'Node.js 20', description: 'Node.js 20 with TypeScript' },
+  { id: 'search', name: 'Search', description: 'Search for files and content' },
 ];
 
 const LLM_PROVIDERS = [
@@ -92,8 +84,6 @@ export default function AgentConfigPanel({ projectId }: AgentConfigPanelProps) {
       setFormData({
         agent_type: config.agent_type,
         system_instructions: config.system_instructions,
-        environment_type: config.environment_type,
-        environment_config: config.environment_config || {},
         enabled_tools: config.enabled_tools || [],
         llm_provider: config.llm_provider,
         llm_model: config.llm_model,
@@ -124,8 +114,6 @@ export default function AgentConfigPanel({ projectId }: AgentConfigPanelProps) {
       setFormData({
         agent_type: config.agent_type,
         system_instructions: config.system_instructions,
-        environment_type: config.environment_type,
-        environment_config: config.environment_config || {},
         enabled_tools: config.enabled_tools || [],
         llm_provider: config.llm_provider,
         llm_model: config.llm_model,
@@ -193,22 +181,9 @@ export default function AgentConfigPanel({ projectId }: AgentConfigPanelProps) {
       <div className="tab-content">
         {activeTab === 'general' && (
           <div className="general-tab">
-            {/* Environment */}
-            <div className="form-section">
-              <label className="section-label">Environment</label>
-              <div className="environment-grid">
-                {ENVIRONMENT_TYPES.map(env => (
-                  <div
-                    key={env.id}
-                    className={`environment-card ${formData.environment_type === env.id ? 'selected' : ''}`}
-                    onClick={() => handleFieldChange('environment_type', env.id)}
-                  >
-                    <div className="env-name">{env.name}</div>
-                    <div className="env-description">{env.description}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <p className="tab-description">
+              Configure the LLM provider and model for your agent. The agent will automatically set up the appropriate sandbox environment based on your tasks.
+            </p>
 
             {/* LLM Provider */}
             <div className="form-section">
@@ -352,7 +327,6 @@ export default function AgentConfigPanel({ projectId }: AgentConfigPanelProps) {
                 <div key={template.id} className="template-card">
                   <div className="template-header">
                     <h4>{template.name}</h4>
-                    <span className="template-env">{template.environment_type}</span>
                   </div>
                   <p className="template-description">{template.description}</p>
                   <div className="template-tools">

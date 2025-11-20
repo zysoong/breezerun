@@ -20,10 +20,6 @@ class AgentConfiguration(Base):
     agent_type = Column(String(50), default="code_agent", nullable=False)
     system_instructions = Column(Text, nullable=True)
 
-    # Environment settings
-    environment_type = Column(String(50), default="python3.11", nullable=False)
-    environment_config = Column(JSON, default=dict, nullable=False)  # packages, env vars
-
     # Tool settings
     enabled_tools = Column(JSON, default=list, nullable=False)  # list of tool names
 

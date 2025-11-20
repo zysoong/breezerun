@@ -25,7 +25,9 @@
       "Bash(PORT=8001 poetry run python:*)",
       "Bash(poetry export:*)",
       "Bash(PORT=8002 poetry run python:*)",
-      "Bash(poetry run pytest:*)"
+      "Bash(poetry run pytest:*)",
+      "Bash(python migrations/migrate_environment_to_sessions.py:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

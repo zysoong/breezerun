@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.models.database import ChatSession, Message, MessageRole, AgentConfiguration, AgentAction
 from app.core.llm import create_llm_provider
 from app.core.agent.executor import ReActAgent
-from app.core.agent.tools import ToolRegistry, BashTool, FileReadTool, FileWriteTool, FileEditTool, SearchTool
+from app.core.agent.tools import ToolRegistry, BashTool, FileReadTool, FileWriteTool, FileEditTool, SearchTool, SetupEnvironmentTool
 from app.core.sandbox.manager import get_container_manager
 
 
@@ -197,28 +197,43 @@ class ChatWebSocketHandler:
         agent_config: AgentConfiguration
     ):
         """Handle agent response with tool execution."""
-        # Get or create sandbox container using global singleton
+        # Get container manager
         container_manager = get_container_manager()
-        container = await container_manager.create_container(
-            session_id,
-            agent_config.environment_type,
-            agent_config.environment_config
-        )
+
+        # Check if environment is already set up for this session
+        session_query = select(ChatSession).where(ChatSession.id == session_id)
+        session_result = await self.db.execute(session_query)
+        session = session_result.scalar_one_or_none()
 
         # Initialize tool registry
         tool_registry = ToolRegistry()
 
-        # Register enabled tools
-        if "bash" in agent_config.enabled_tools:
-            tool_registry.register(BashTool(container))
-        if "file_read" in agent_config.enabled_tools:
-            tool_registry.register(FileReadTool(container))
-        if "file_write" in agent_config.enabled_tools:
-            tool_registry.register(FileWriteTool(container))
-        if "file_edit" in agent_config.enabled_tools:
-            tool_registry.register(FileEditTool(container))
-        if "search" in agent_config.enabled_tools:
-            tool_registry.register(SearchTool(container))
+        # Register tools based on environment setup status
+        if session and session.environment_type:
+            # Environment is set up - get container and register all sandbox tools
+            container = await container_manager.get_container(session_id)
+            if not container:
+                # Container not running, recreate it
+                container = await container_manager.create_container(
+                    session_id,
+                    session.environment_type,
+                    session.environment_config or {}
+                )
+
+            # Register enabled sandbox tools
+            if "bash" in agent_config.enabled_tools:
+                tool_registry.register(BashTool(container))
+            if "file_read" in agent_config.enabled_tools:
+                tool_registry.register(FileReadTool(container))
+            if "file_write" in agent_config.enabled_tools:
+                tool_registry.register(FileWriteTool(container))
+            if "file_edit" in agent_config.enabled_tools:
+                tool_registry.register(FileEditTool(container))
+            if "search" in agent_config.enabled_tools:
+                tool_registry.register(SearchTool(container))
+        else:
+            # Environment not set up - only register setup_environment tool
+            tool_registry.register(SetupEnvironmentTool(self.db, session_id, container_manager))
 
         # Create ReAct agent
         agent = ReActAgent(

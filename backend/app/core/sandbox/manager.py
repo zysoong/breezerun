@@ -37,7 +37,10 @@ class ContainerPoolManager:
         self.env_images = {
             "python3.11": "opencodex-env-python3.11:latest",
             "python3.12": "opencodex-env-python3.12:latest",
-            "node20": "opencodex-env-node20:latest",
+            "python3.13": "opencodex-env-python3.13:latest",
+            "nodejs": "opencodex-env-nodejs:latest",
+            "node20": "opencodex-env-node20:latest",  # Keep for backward compatibility
+            "cpp": "opencodex-env-cpp:latest",
         }
 
     def _get_workspace_path(self, session_id: str) -> Path:

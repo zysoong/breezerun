@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, JSON
 from sqlalchemy.orm import relationship
 import enum
 
@@ -26,6 +26,10 @@ class ChatSession(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     container_id = Column(String(100), nullable=True)  # Docker container ID
     status = Column(Enum(ChatSessionStatus), default=ChatSessionStatus.ACTIVE, nullable=False)
+
+    # Environment settings (set up dynamically by agent)
+    environment_type = Column(String(50), nullable=True)  # e.g., "python3.11", "nodejs", null if not set up
+    environment_config = Column(JSON, default=dict, nullable=True)  # packages, env vars, etc.
 
     # Relationships
     project = relationship("Project", back_populates="chat_sessions")

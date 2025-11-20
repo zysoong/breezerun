@@ -192,7 +192,14 @@ export default function ChatSessionPage() {
         <button className="back-btn" onClick={() => navigate(`/projects/${projectId}`)}>
           ← Back to Project
         </button>
-        <h2 className="session-title">{session?.name || 'Chat Session'}</h2>
+        <h2 className="session-title">
+          {session?.name || 'Chat Session'}
+          {session?.environment_type && (
+            <span className="environment-badge" title="Sandbox environment">
+              {session.environment_type}
+            </span>
+          )}
+        </h2>
         <div className="header-spacer"></div>
       </div>
 

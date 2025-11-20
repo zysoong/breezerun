@@ -17,7 +17,6 @@ class TestAgentConfigAPI:
         data = response.json()
         assert data["project_id"] == sample_project.id
         assert "agent_type" in data
-        assert "environment_type" in data
         assert "enabled_tools" in data
         assert "llm_provider" in data
         assert "llm_model" in data
@@ -49,23 +48,6 @@ class TestAgentConfigAPI:
         assert data["llm_model"] == "claude-3-sonnet"
         assert data["llm_config"]["temperature"] == 0.9
         assert data["llm_config"]["max_tokens"] == 8192
-
-    def test_update_agent_config_environment(self, client: TestClient, sample_project):
-        """Test updating environment settings."""
-        response = client.put(
-            f"/api/v1/projects/{sample_project.id}/agent-config",
-            json={
-                "environment_type": "python3.12",
-                "environment_config": {
-                    "packages": ["numpy", "pandas"]
-                }
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["environment_type"] == "python3.12"
-        assert "numpy" in data["environment_config"]["packages"]
 
     def test_update_agent_config_tools(self, client: TestClient, sample_project):
         """Test updating enabled tools."""

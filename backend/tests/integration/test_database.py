@@ -173,7 +173,6 @@ class TestDatabaseOperations:
         config = AgentConfiguration(
             project_id=project.id,
             agent_type="react",
-            environment_type="python3.11",
             llm_provider="openai",
             llm_model="gpt-4",
             enabled_tools=[],

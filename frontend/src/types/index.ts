@@ -28,8 +28,6 @@ export interface AgentConfiguration {
   project_id: string;
   agent_type: string;
   system_instructions: string | null;
-  environment_type: string;
-  environment_config: Record<string, any>;
   enabled_tools: string[];
   llm_provider: string;
   llm_model: string;
@@ -38,9 +36,7 @@ export interface AgentConfiguration {
 
 export interface AgentConfigurationUpdate {
   agent_type?: string;
-  system_instructions?: string;
-  environment_type?: string;
-  environment_config?: Record<string, any>;
+  system_instructions?: string | null;
   enabled_tools?: string[];
   llm_provider?: string;
   llm_model?: string;
@@ -55,6 +51,7 @@ export interface ChatSession {
   created_at: string;
   container_id: string | null;
   status: 'active' | 'archived';
+  environment_type?: string | null; // Set by agent when environment is configured
 }
 
 export interface ChatSessionCreate {
