@@ -38,11 +38,14 @@ export default function ChatView({ session }: ChatViewProps) {
 
   // Setup WebSocket
   useEffect(() => {
+    console.log('[ChatView] Setting up WebSocket for session:', session.id);
     const ws = new ChatWebSocket(session.id);
 
     ws.connect((message: ChatMessage) => {
+      console.log('[ChatView] Received message:', message.type, message);
       switch (message.type) {
         case 'start':
+          console.log('[ChatView] START event - setting streaming to TRUE');
           setStreaming(true);
           clearStreamingMessage();
           clearAgentActions();
@@ -91,6 +94,15 @@ export default function ChatView({ session }: ChatViewProps) {
           clearStreamingMessage();
           break;
 
+        case 'cancelled':
+          console.log('Response cancelled by user');
+          setStreaming(false);
+          // Keep the partial content visible
+          if (message.content) {
+            appendStreamingMessage(message.content);
+          }
+          break;
+
         case 'error':
           console.error('WebSocket error:', message.content);
           setError(message.content || 'An unknown error occurred');
@@ -108,9 +120,11 @@ export default function ChatView({ session }: ChatViewProps) {
     wsRef.current = ws;
 
     return () => {
+      console.log('[ChatView] Cleaning up WebSocket for session:', session.id);
       ws.close();
+      wsRef.current = null;
     };
-  }, [session.id]);
+  }, [session.id]); // Only depend on session.id to avoid recreating WebSocket
 
   const handleSendMessage = (content: string) => {
     // Clear any previous errors when sending a new message
@@ -121,6 +135,14 @@ export default function ChatView({ session }: ChatViewProps) {
     } else {
       console.error('WebSocket is not connected');
       setError('WebSocket is not connected. Please refresh the page.');
+    }
+  };
+
+  const handleCancelMessage = () => {
+    if (wsRef.current && wsRef.current.isConnected()) {
+      wsRef.current.sendCancel();
+    } else {
+      console.error('WebSocket is not connected');
     }
   };
 
@@ -159,7 +181,9 @@ export default function ChatView({ session }: ChatViewProps) {
 
       <MessageInput
         onSend={handleSendMessage}
+        onCancel={handleCancelMessage}
         disabled={isStreaming}
+        isStreaming={isStreaming}
       />
     </div>
   );

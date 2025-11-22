@@ -1,11 +1,12 @@
 export interface ChatMessage {
-  type: 'message' | 'chunk' | 'start' | 'end' | 'error' | 'user_message_saved' | 'thought' | 'action' | 'observation';
+  type: 'message' | 'chunk' | 'start' | 'end' | 'error' | 'user_message_saved' | 'thought' | 'action' | 'observation' | 'cancelled' | 'cancel_acknowledged';
   content?: string;
   message_id?: string;
   tool?: string;
   args?: any;
   success?: boolean;
   step?: number;
+  partial_content?: string;
 }
 
 export class ChatWebSocket {
@@ -58,6 +59,18 @@ export class ChatWebSocket {
         content,
       };
       this.ws.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket is not connected');
+    }
+  }
+
+  sendCancel(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'cancel',
+      };
+      this.ws.send(JSON.stringify(message));
+      console.log('Cancel message sent');
     } else {
       console.error('WebSocket is not connected');
     }

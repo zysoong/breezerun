@@ -86,6 +86,8 @@ export default function ChatSessionPage() {
       const data = JSON.parse(event.data);
 
       if (data.type === 'start') {
+        console.log('[ChatSessionPage] START event - setting isSending to TRUE');
+        setIsSending(true); // Enable stop button
         clearAgentActions();
         setMessages((prev) => [
           ...prev,
@@ -96,6 +98,9 @@ export default function ChatSessionPage() {
             created_at: new Date().toISOString(),
           },
         ]);
+      } else if (data.type === 'cancelled') {
+        console.log('[ChatSessionPage] Response cancelled');
+        setIsSending(false);
       } else if (data.type === 'thought') {
         addAgentAction({
           type: 'thought',
@@ -160,7 +165,6 @@ export default function ChatSessionPage() {
     if (!textToSend.trim() || isSending || !wsRef.current) return;
 
     setError(null); // Clear any previous errors
-    setIsSending(true);
     setInput('');
 
     // Add user message to UI
@@ -172,13 +176,20 @@ export default function ChatSessionPage() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Send via WebSocket
+    // Send via WebSocket (isSending will be set to true when 'start' event is received)
     wsRef.current.send(
       JSON.stringify({
         type: 'message',
         content: textToSend,
       })
     );
+  };
+
+  const handleCancel = () => {
+    console.log('[ChatSessionPage] Cancel button clicked');
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel' }));
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -310,9 +321,14 @@ export default function ChatSessionPage() {
             rows={1}
             disabled={isSending}
           />
-          <button className="send-btn" onClick={() => handleSend()} disabled={!input.trim() || isSending}>
+          <button
+            className={`send-btn ${isSending ? 'stop-btn' : ''}`}
+            onClick={isSending ? handleCancel : () => handleSend()}
+            disabled={isSending ? false : !input.trim()}
+            title={isSending ? 'Stop generating' : 'Send message'}
+          >
             {isSending ? (
-              <span className="spinner">⏳</span>
+              'Stop'
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path

@@ -129,7 +129,7 @@ async def test_text_streaming_vs_function_calling():
 
 @pytest.mark.asyncio
 async def test_mixed_text_and_function_call():
-    """Test reasoning text before function call is emitted as thought."""
+    """Test reasoning text before function call is emitted as chunks during streaming."""
 
     mock_llm = MagicMock()
 
@@ -155,9 +155,9 @@ async def test_mixed_text_and_function_call():
     async for event in agent.run("Test"):
         events.append(event)
 
-    # Should have thought event with the reasoning text
-    thought_events = [e for e in events if e.get("type") == "thought"]
-    assert len(thought_events) > 0, "Should have thought event for reasoning text"
+    # Should have chunk events with the reasoning text (emitted during streaming)
+    chunk_events = [e for e in events if e.get("type") == "chunk"]
+    assert len(chunk_events) > 0, "Should have chunk events for reasoning text"
 
     # Should have action event for function call
     action_events = [e for e in events if e.get("type") == "action"]

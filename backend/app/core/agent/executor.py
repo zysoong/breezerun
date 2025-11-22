@@ -89,12 +89,14 @@ Available tools will be provided as function calling options. Use them to accomp
         self,
         user_message: str,
         conversation_history: List[Dict[str, str | None]] = None,
+        cancel_event: Any = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Run the agent on a user message.
 
         Args:
             user_message: The user's request
             conversation_history: Previous conversation messages
+            cancel_event: Optional asyncio.Event for cancelling execution
 
         Yields:
             Agent steps and final response
@@ -118,6 +120,17 @@ Available tools will be provided as function calling options. Use them to accomp
 
         for iteration in range(self.max_iterations):
             print(f"\n[REACT AGENT] Iteration {iteration + 1}/{self.max_iterations}")
+
+            # Check for cancellation
+            if cancel_event and cancel_event.is_set():
+                print(f"[REACT AGENT] Cancellation requested")
+                yield {
+                    "type": "cancelled",
+                    "content": "Response cancelled by user",
+                    "step": iteration + 1,
+                }
+                return
+
             try:
                 # Get LLM response with function calling
                 llm_messages = messages.copy()
@@ -136,13 +149,29 @@ Available tools will be provided as function calling options. Use them to accomp
                     messages=llm_messages,
                     tools=tools_for_llm if tools_for_llm else None,
                 ):
+                    # Check for cancellation during streaming
+                    if cancel_event and cancel_event.is_set():
+                        print(f"[REACT AGENT] Cancellation during streaming")
+                        yield {
+                            "type": "cancelled",
+                            "content": "Response cancelled by user",
+                            "partial_content": full_response,
+                            "step": iteration + 1,
+                        }
+                        return
+
                     chunk_count += 1
                     # Handle regular content
                     if isinstance(chunk, str):
                         full_response += chunk
                         if chunk_count <= 3:  # Only print first few chunks
                             print(f"[REACT AGENT] Text chunk #{chunk_count}: {chunk[:50]}...")
-                        # Don't yield chunks here - we'll yield them after we know if it's a function call or final answer
+                        # Emit chunks immediately for better UX and cancellation support
+                        yield {
+                            "type": "chunk",
+                            "content": chunk,
+                            "step": iteration + 1,
+                        }
                     # Handle function call (if LLM returns structured data)
                     elif isinstance(chunk, dict) and "function_call" in chunk:
                         print(f"[REACT AGENT] Function call chunk: {chunk}")
@@ -162,13 +191,7 @@ Available tools will be provided as function calling options. Use them to accomp
                 if function_name and self.tools.has_tool(function_name):
                     print(f"[REACT AGENT] Executing function: {function_name}")
 
-                    # Emit thought if there was reasoning text before the function call
-                    if full_response:
-                        yield {
-                            "type": "thought",
-                            "content": full_response,
-                            "step": iteration + 1,
-                        }
+                    # Note: reasoning text before function call was already emitted as chunks during streaming
 
                     # Parse function arguments
                     try:
@@ -199,16 +222,11 @@ Available tools will be provided as function calling options. Use them to accomp
                             "step": iteration + 1,
                         }
 
-                        # Add to conversation
+                        # Add tool result to conversation as user message
+                        # (GPT-5 doesn't support 'function' role)
                         messages.append({
-                            "role": "assistant",
-                            "content": None,
-                            "function_call": {"name": function_name, "arguments": json.dumps(args)},
-                        })
-                        messages.append({
-                            "role": "function",
-                            "name": function_name,
-                            "content": observation,
+                            "role": "user",
+                            "content": f"Tool '{function_name}' returned: {observation}",
                         })
 
                         # Record step
@@ -228,18 +246,7 @@ Available tools will be provided as function calling options. Use them to accomp
                     print(f"[REACT AGENT] No function call - providing final answer")
                     print(f"[REACT AGENT] Final answer: {full_response[:100]}...")
 
-                    # Stream final answer as chunks (word by word) for better UX
-                    # Split by words to simulate streaming
-                    words = full_response.split(' ')
-                    for i, word in enumerate(words):
-                        # Add space before word (except first word)
-                        chunk = (' ' + word) if i > 0 else word
-                        yield {
-                            "type": "chunk",
-                            "content": chunk,
-                            "step": iteration + 1,
-                        }
-
+                    # Chunks were already emitted during streaming above
                     return
 
                 # If we get here with no response, something went wrong

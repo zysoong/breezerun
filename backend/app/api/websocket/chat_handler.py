@@ -1,6 +1,7 @@
 """WebSocket handler for chat streaming with agent support."""
 
 import json
+import asyncio
 from typing import Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,8 @@ class ChatWebSocketHandler:
     def __init__(self, websocket: WebSocket, db: AsyncSession):
         self.websocket = websocket
         self.db = db
+        self.current_agent_task = None
+        self.cancel_event = None
 
     async def handle_connection(self, session_id: str):
         """Handle WebSocket connection for a chat session."""
@@ -65,6 +68,18 @@ class ChatWebSocketHandler:
                         message_data.get("content", ""),
                         agent_config
                     )
+                elif message_data.get("type") == "cancel":
+                    # User wants to cancel the current agent execution
+                    print(f"[CHAT HANDLER] Cancel request received")
+                    if self.cancel_event:
+                        self.cancel_event.set()
+                        print(f"[CHAT HANDLER] Cancel event set")
+                    if self.current_agent_task:
+                        self.current_agent_task.cancel()
+                        print(f"[CHAT HANDLER] Agent task cancelled")
+                    await self.websocket.send_json({
+                        "type": "cancel_acknowledged"
+                    })
 
         except WebSocketDisconnect:
             print(f"WebSocket disconnected for session {session_id}")
@@ -179,17 +194,39 @@ class ChatWebSocketHandler:
         # Add conversation history
         messages.extend(history)
 
+        # Create cancel event
+        self.cancel_event = asyncio.Event()
+
         # Stream response
         assistant_content = ""
         await self.websocket.send_json({"type": "start"})
 
-        async for chunk in llm_provider.generate_stream(messages):
-            if isinstance(chunk, str):
-                assistant_content += chunk
-                await self.websocket.send_json({
-                    "type": "chunk",
-                    "content": chunk
-                })
+        try:
+            async for chunk in llm_provider.generate_stream(messages):
+                # Check for cancellation
+                if self.cancel_event.is_set():
+                    print(f"[SIMPLE RESPONSE] Cancellation detected")
+                    await self.websocket.send_json({
+                        "type": "cancelled",
+                        "content": "Response cancelled by user"
+                    })
+                    return
+
+                if isinstance(chunk, str):
+                    assistant_content += chunk
+                    await self.websocket.send_json({
+                        "type": "chunk",
+                        "content": chunk
+                    })
+        except asyncio.CancelledError:
+            print(f"[SIMPLE RESPONSE] Task cancelled")
+            await self.websocket.send_json({
+                "type": "cancelled",
+                "content": "Response cancelled by user"
+            })
+            return
+        finally:
+            self.cancel_event = None
 
         # Save assistant message
         assistant_message = Message(
@@ -290,114 +327,142 @@ class ChatWebSocketHandler:
             system_instructions=agent_config.system_instructions,
         )
 
+        # Create cancel event
+        self.cancel_event = asyncio.Event()
+
         # Stream agent execution
         assistant_content = ""
         agent_actions = []
         has_error = False
         error_message = None
+        cancelled = False
 
         await self.websocket.send_json({"type": "start"})
         print(f"[AGENT] Starting agent execution loop...")
 
         event_count = 0
-        async for event in agent.run(user_message, history):
-            event_count += 1
-            event_type = event.get("type")
-            print(f"[AGENT] Event #{event_count}: {event_type}")
-            print(f"  Full event: {event}")
+        try:
+            async for event in agent.run(user_message, history, cancel_event=self.cancel_event):
+                event_count += 1
+                event_type = event.get("type")
+                print(f"[AGENT] Event #{event_count}: {event_type}")
+                print(f"  Full event: {event}")
 
-            if event_type == "thought":
-                # Agent is thinking
-                chunk = event.get("content", "")
-                assistant_content += chunk
-                print(f"[AGENT] Thought: {chunk[:100]}...")
-                await self.websocket.send_json({
-                    "type": "thought",
-                    "content": chunk,
-                    "step": event.get("step", 0)
-                })
+                if event_type == "cancelled":
+                    # Agent was cancelled
+                    cancelled = True
+                    print(f"[AGENT] Agent cancelled: {event.get('content')}")
+                    await self.websocket.send_json({
+                        "type": "cancelled",
+                        "content": event.get("content", "Response cancelled by user"),
+                        "partial_content": event.get("partial_content")
+                    })
+                    break
 
-            elif event_type == "action":
-                # Agent is using a tool
-                tool_name = event.get("tool")
-                tool_args = event.get("args", {})
-                print(f"[AGENT] Action: {tool_name}")
-                print(f"  Args: {tool_args}")
-                await self.websocket.send_json({
-                    "type": "action",
-                    "tool": tool_name,
-                    "args": tool_args,
-                    "step": event.get("step", 0)
-                })
+                elif event_type == "thought":
+                    # Agent is thinking
+                    chunk = event.get("content", "")
+                    assistant_content += chunk
+                    print(f"[AGENT] Thought: {chunk[:100]}...")
+                    await self.websocket.send_json({
+                        "type": "thought",
+                        "content": chunk,
+                        "step": event.get("step", 0)
+                    })
 
-                # Save agent action to database (will set message_id after creating assistant message)
-                action = {
-                    "action_type": tool_name,
-                    "action_input": tool_args,
-                    "action_output": None,
-                    "status": "pending"
-                }
-                agent_actions.append(action)
+                elif event_type == "action":
+                    # Agent is using a tool
+                    tool_name = event.get("tool")
+                    tool_args = event.get("args", {})
+                    print(f"[AGENT] Action: {tool_name}")
+                    print(f"  Args: {tool_args}")
+                    await self.websocket.send_json({
+                        "type": "action",
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "step": event.get("step", 0)
+                    })
 
-            elif event_type == "observation":
-                # Tool execution result
-                observation = event.get("content", "")
-                success = event.get("success", True)
-                print(f"[AGENT] Observation (success={success}): {observation[:100]}...")
-                await self.websocket.send_json({
-                    "type": "observation",
-                    "content": observation,
-                    "success": success,
-                    "step": event.get("step", 0)
-                })
-
-                # Update last action with result
-                if agent_actions:
-                    agent_actions[-1]["action_output"] = {
-                        "result": observation,
-                        "success": success
+                    # Save agent action to database (will set message_id after creating assistant message)
+                    action = {
+                        "action_type": tool_name,
+                        "action_input": tool_args,
+                        "action_output": None,
+                        "status": "pending"
                     }
-                    agent_actions[-1]["status"] = "success" if success else "error"
+                    agent_actions.append(action)
 
-            elif event_type == "chunk":
-                # Agent is streaming final answer chunks
-                chunk = event.get("content", "")
-                assistant_content += chunk
-                # Forward chunk to frontend
-                await self.websocket.send_json({
-                    "type": "chunk",
-                    "content": chunk
-                })
+                elif event_type == "observation":
+                    # Tool execution result
+                    observation = event.get("content", "")
+                    success = event.get("success", True)
+                    print(f"[AGENT] Observation (success={success}): {observation[:100]}...")
+                    await self.websocket.send_json({
+                        "type": "observation",
+                        "content": observation,
+                        "success": success,
+                        "step": event.get("step", 0)
+                    })
 
-            elif event_type == "final_answer":
-                # Agent has completed the task (legacy - now using chunks)
-                answer = event.get("content", "")
-                assistant_content += answer
-                print(f"[AGENT] Final Answer: {answer[:100]}...")
-                await self.websocket.send_json({
-                    "type": "chunk",
-                    "content": answer
-                })
+                    # Update last action with result
+                    if agent_actions:
+                        agent_actions[-1]["action_output"] = {
+                            "result": observation,
+                            "success": success
+                        }
+                        agent_actions[-1]["status"] = "success" if success else "error"
 
-            elif event_type == "error":
-                # Error occurred
-                error_message = event.get("content", "Unknown error")
-                has_error = True
-                print(f"[AGENT] ERROR: {error_message}")
-                await self.websocket.send_json({
-                    "type": "error",
-                    "content": error_message
-                })
-                # Break out of the loop - don't save message for errors
-                break
+                elif event_type == "chunk":
+                    # Agent is streaming final answer chunks
+                    chunk = event.get("content", "")
+                    assistant_content += chunk
+                    # Forward chunk to frontend
+                    await self.websocket.send_json({
+                        "type": "chunk",
+                        "content": chunk
+                    })
+
+                elif event_type == "final_answer":
+                    # Agent has completed the task (legacy - now using chunks)
+                    answer = event.get("content", "")
+                    assistant_content += answer
+                    print(f"[AGENT] Final Answer: {answer[:100]}...")
+                    await self.websocket.send_json({
+                        "type": "chunk",
+                        "content": answer
+                    })
+
+                elif event_type == "error":
+                    # Error occurred
+                    error_message = event.get("content", "Unknown error")
+                    has_error = True
+                    print(f"[AGENT] ERROR: {error_message}")
+                    await self.websocket.send_json({
+                        "type": "error",
+                        "content": error_message
+                    })
+                    # Break out of the loop - don't save message for errors
+                    break
+
+        except asyncio.CancelledError:
+            # Task was cancelled
+            cancelled = True
+            print(f"[AGENT] Task cancelled via CancelledError")
+            await self.websocket.send_json({
+                "type": "cancelled",
+                "content": "Response cancelled by user"
+            })
+        finally:
+            self.cancel_event = None
 
         print(f"[AGENT] Agent execution completed. Total events: {event_count}")
         print(f"[AGENT] Assistant content length: {len(assistant_content)}")
         print(f"[AGENT] Total actions: {len(agent_actions)}")
         print(f"[AGENT] Has error: {has_error}")
+        print(f"[AGENT] Cancelled: {cancelled}")
 
-        # Only save assistant message if there was no error
-        if not has_error:
+        # Only save assistant message if there was no error and not cancelled
+        if not has_error and not cancelled:
             # Save assistant message with agent actions
             assistant_message = Message(
                 chat_session_id=session_id,
@@ -430,12 +495,19 @@ class ChatWebSocketHandler:
                 "message_id": assistant_message.id
             })
         else:
-            # Send completion without message ID (error case)
-            print(f"[AGENT] Skipping message save due to error")
-            await self.websocket.send_json({
-                "type": "end",
-                "error": True
-            })
+            # Send completion without message ID (error or cancel case)
+            if cancelled:
+                print(f"[AGENT] Skipping message save due to cancellation")
+                await self.websocket.send_json({
+                    "type": "end",
+                    "cancelled": True
+                })
+            else:
+                print(f"[AGENT] Skipping message save due to error")
+                await self.websocket.send_json({
+                    "type": "end",
+                    "error": True
+                })
 
     async def _get_conversation_history(self, session_id: str) -> list[Dict[str, str]]:
         """Get conversation history for a session."""

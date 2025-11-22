@@ -3,12 +3,17 @@ import './MessageInput.css';
 
 interface MessageInputProps {
   onSend: (message: string) => void;
+  onCancel?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
 }
 
-export default function MessageInput({ onSend, disabled }: MessageInputProps) {
+export default function MessageInput({ onSend, onCancel, disabled, isStreaming }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Debug logging
+  console.log('[MessageInput] isStreaming:', isStreaming, 'disabled:', disabled);
 
   const handleSend = () => {
     const trimmed = message.trim();
@@ -52,11 +57,12 @@ export default function MessageInput({ onSend, disabled }: MessageInputProps) {
           rows={1}
         />
         <button
-          className="send-btn"
-          onClick={handleSend}
-          disabled={!message.trim() || disabled}
+          className={`send-btn ${isStreaming ? 'stop-btn' : ''}`}
+          onClick={isStreaming ? onCancel : handleSend}
+          disabled={isStreaming ? false : (!message.trim() || disabled)}
+          title={isStreaming ? 'Stop generating' : 'Send message'}
         >
-          Send
+          {isStreaming ? 'Stop' : 'Send'}
         </button>
       </div>
     </div>

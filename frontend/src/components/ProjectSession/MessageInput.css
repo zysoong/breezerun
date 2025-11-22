@@ -61,3 +61,19 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.send-btn.stop-btn {
+  background-color: #dc2626;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.send-btn.stop-btn:hover {
+  background-color: #b91c1c;
+}
+
+.send-btn.stop-btn:disabled {
+  background-color: #dc2626;
+  opacity: 1;
+  cursor: pointer;
+}
