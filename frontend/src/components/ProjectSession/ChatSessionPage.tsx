@@ -317,15 +317,30 @@ export default function ChatSessionPage() {
                     {message.role === 'assistant' && agentActions && agentActions.length > 0 && index === messages.length - 1 && (
                       <div className="agent-actions-inline">
                         {agentActions
-                          // Filter to show only the LAST action_args_chunk per tool
+                          // Filter to show clean streaming experience
                           .filter((action, idx, arr) => {
+                            // Hide action_streaming if we have action for the same tool
+                            if (action.type === 'action_streaming') {
+                              const hasAction = arr.find(
+                                a => a.type === 'action' && a.tool === action.tool
+                              );
+                              return !hasAction; // Hide streaming indicator once action arrives
+                            }
+
+                            // Hide action_args_chunk if we have action for the same tool
                             if (action.type === 'action_args_chunk') {
-                              // Find if there's a later action_args_chunk for the same tool
+                              const hasAction = arr.find(
+                                a => a.type === 'action' && a.tool === action.tool
+                              );
+                              if (hasAction) return false; // Hide chunk once action arrives
+
+                              // Otherwise show only the LAST chunk for this tool
                               const laterChunk = arr.slice(idx + 1).find(
                                 a => a.type === 'action_args_chunk' && a.tool === action.tool
                               );
-                              return !laterChunk; // Only keep if there's no later chunk
+                              return !laterChunk;
                             }
+
                             return true; // Keep all other action types
                           })
                           .map((action, idx) => (
