@@ -1,4 +1,4 @@
-import { useRef, useEffect, forwardRef } from 'react';
+import { useRef, useEffect, forwardRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { MemoizedMessage } from './MemoizedMessage';
 import { Message, StreamEvent } from '../hooks/useOptimizedStreaming';
@@ -37,49 +37,105 @@ const ItemWrapper = ({ children }: { children: React.ReactNode }) => (
 
 export const VirtualizedChatList = ({ messages, isStreaming, streamEvents = [] }: VirtualizedChatListProps) => {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
 
-  // Auto-scroll to bottom when new message arrives or during streaming
+  // Auto-scroll to bottom when new message arrives OR during streaming (only if toggle is ON)
   useEffect(() => {
-    if (messages.length > 0) {
-      virtuosoRef.current?.scrollToIndex({
-        index: messages.length - 1,
-        behavior: isStreaming ? 'auto' : 'smooth',
-        align: 'end',
-      });
+    if (messages.length > 0 && autoScrollEnabled) {
+      // Use setTimeout to ensure DOM has updated with new streaming content
+      const timeoutId = setTimeout(() => {
+        if (virtuosoRef.current) {
+          // Scroll to absolute bottom using large number
+          virtuosoRef.current.scrollTo({
+            top: 999999999,
+            behavior: isStreaming ? 'auto' : 'smooth',
+          });
+        }
+      }, isStreaming ? 0 : 10);
+
+      return () => clearTimeout(timeoutId);
     }
-  }, [messages.length, isStreaming]);
+  }, [messages.length, isStreaming, autoScrollEnabled, streamEvents]);
 
   return (
-    <Virtuoso
-      ref={virtuosoRef}
-      data={messages}
-      initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
-      followOutput="auto"
-      itemContent={(index, message) => {
-        const isLastMessage = index === messages.length - 1;
-        const isCurrentlyStreaming = isStreaming && isLastMessage;
+    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+      <Virtuoso
+        ref={virtuosoRef}
+        data={messages}
+        initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+        itemContent={(index, message) => {
+          const isLastMessage = index === messages.length - 1;
+          const isCurrentlyStreaming = isStreaming && isLastMessage;
 
-        return (
-          <ItemWrapper>
-            <MemoizedMessage
-              key={message.id}
-              message={message}
-              isStreaming={isCurrentlyStreaming}
-              streamEvents={isCurrentlyStreaming ? streamEvents : []}
-            />
-          </ItemWrapper>
-        );
-      }}
-      components={{
-        Scroller: CustomScroller,
-        EmptyPlaceholder: () => (
-          <div className="empty-chat">
-            <h3>Start a conversation</h3>
-            <p>Ask me anything, and I'll help you with code, data analysis, and more.</p>
-          </div>
-        ),
-      }}
-      style={{ height: '100%', width: '100%' }}
-    />
+          return (
+            <ItemWrapper>
+              <MemoizedMessage
+                key={message.id}
+                message={message}
+                isStreaming={isCurrentlyStreaming}
+                streamEvents={isCurrentlyStreaming ? streamEvents : []}
+              />
+            </ItemWrapper>
+          );
+        }}
+        components={{
+          Scroller: CustomScroller,
+          Footer: () => <div style={{ height: '80px' }} />,
+          EmptyPlaceholder: () => (
+            <div className="empty-chat">
+              <h3>Start a conversation</h3>
+              <p>Ask me anything, and I'll help you with code, data analysis, and more.</p>
+            </div>
+          ),
+        }}
+        style={{ height: '100%', width: '100%' }}
+      />
+
+      {/* Auto-scroll toggle button */}
+      <button
+        onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          border: autoScrollEnabled ? 'none' : '2px solid #3b82f6',
+          backgroundColor: autoScrollEnabled ? '#3b82f6' : 'white',
+          color: autoScrollEnabled ? 'white' : '#3b82f6',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+          transition: 'all 0.2s ease',
+          zIndex: 10,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        title={autoScrollEnabled ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M10 4L10 16M10 16L6 12M10 16L14 12"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 };
