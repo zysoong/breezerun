@@ -1,9 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-// Industry standard: 50ms interval = 20 updates/second
-// This matches ChatGPT, Claude, and other production chat apps
-const FLUSH_INTERVAL_MS = 50;
+// Industry standard: 30ms interval = 33 updates/second (ChatGPT-like speed)
+const FLUSH_INTERVAL_MS = 30;
 
 export interface Message {
   id: string;
@@ -24,12 +23,12 @@ export interface StreamEvent {
   status?: string;
 }
 
-interface UseStreamingManagerProps {
+interface UseOptimizedStreamingProps {
   sessionId: string | undefined;
   initialMessages?: Message[];
 }
 
-export const useStreamingManager = ({ sessionId, initialMessages = [] }: UseStreamingManagerProps) => {
+export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOptimizedStreamingProps) => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -38,11 +37,11 @@ export const useStreamingManager = ({ sessionId, initialMessages = [] }: UseStre
   const wsRef = useRef<WebSocket | null>(null);
   const queryClient = useQueryClient();
 
-  // Refs for buffering (no re-renders when updated)
+  // Buffers for batching (no re-renders when updated)
   const chunkBufferRef = useRef<string>('');
   const eventBufferRef = useRef<StreamEvent[]>([]);
 
-  // Continuous interval flush - runs while streaming
+  // Optimized: 30ms interval for ChatGPT-like streaming speed
   useEffect(() => {
     if (!isStreaming) return;
 
@@ -263,25 +262,25 @@ export const useStreamingManager = ({ sessionId, initialMessages = [] }: UseStre
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('[useStreamingManager] WebSocket connected');
+      console.log('[useOptimizedStreaming] WebSocket connected');
     };
 
     ws.onmessage = handleWebSocketMessage;
 
     ws.onerror = (error) => {
-      console.error('[useStreamingManager] WebSocket error:', error);
+      console.error('[useOptimizedStreaming] WebSocket error:', error);
       setIsStreaming(false);
       setError('Connection error occurred');
     };
 
     ws.onclose = () => {
-      console.log('[useStreamingManager] WebSocket closed');
+      console.log('[useOptimizedStreaming] WebSocket closed');
       setIsStreaming(false);
     };
 
     // Cleanup on unmount
     return () => {
-      console.log('[useStreamingManager] Cleaning up WebSocket');
+      console.log('[useOptimizedStreaming] Cleaning up WebSocket');
       ws.close();
     };
   }, [sessionId, handleWebSocketMessage]);
@@ -296,7 +295,7 @@ export const useStreamingManager = ({ sessionId, initialMessages = [] }: UseStre
   // Send message via WebSocket
   const sendMessage = useCallback((content: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.error('[useStreamingManager] WebSocket not ready');
+      console.error('[useOptimizedStreaming] WebSocket not ready');
       return false;
     }
 

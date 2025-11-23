@@ -53,7 +53,12 @@
       "WebFetch(domain:blog.langchain.com)",
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:google.github.io)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:akashbuilds.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.ycombinator.com)",
+      "WebFetch(domain:getstream.io)",
+      "WebFetch(domain:ai-sdk.dev)"
     ],
     "deny": [],
     "ask": []
