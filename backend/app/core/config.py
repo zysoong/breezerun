@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     # Docker
     docker_container_pool_size: int = 5
 
+    # Storage Configuration
+    storage_mode: str = "volume"  # Options: "local", "volume", "s3"
+    storage_workspace_base: str = "./data/workspaces"  # For local mode
+
+    # S3/MinIO Configuration (for storage_mode="s3")
+    s3_bucket_name: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_endpoint_url: str | None = None  # For MinIO or custom S3-compatible service
+    s3_region: str = "us-east-1"
+
     # LLM Defaults
     default_llm_provider: str = "openai"
     default_llm_model: str = "gpt-5-2025-08-07"  # Latest OpenAI model (GPT-5)

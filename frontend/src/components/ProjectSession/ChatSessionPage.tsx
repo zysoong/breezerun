@@ -24,18 +24,32 @@ export default function ChatSessionPage() {
   });
 
   // Fetch messages
-  const { data: messagesData } = useQuery({
+  const { data: messagesData, refetch: refetchMessages } = useQuery({
     queryKey: ['messages', sessionId],
     queryFn: () => messagesAPI.list(sessionId!),
     enabled: !!sessionId,
+    staleTime: 0, // Always refetch on mount
+    cacheTime: 0, // Don't cache
   });
 
   // Load messages from API
   useEffect(() => {
+    console.log('[ChatSessionPage] useEffect triggered. sessionId:', sessionId);
+    console.log('[ChatSessionPage] messagesData:', messagesData);
     if (messagesData?.messages) {
+      console.log('[ChatSessionPage] Loading messages from API:', messagesData.messages.length);
+      console.log('[ChatSessionPage] Total from API:', messagesData.total);
+      console.log('[ChatSessionPage] Full messagesData:', JSON.stringify(messagesData, null, 2));
+      // Log agent actions for debugging
+      messagesData.messages.forEach((msg: any, idx: number) => {
+        console.log(`[ChatSessionPage] Message ${idx}: role=${msg.role}, has_actions=${msg.agent_actions?.length || 0}`);
+        if (msg.agent_actions && msg.agent_actions.length > 0) {
+          console.log(`[ChatSessionPage] Message ${msg.id.substring(0, 8)} has ${msg.agent_actions.length} agent actions:`, msg.agent_actions);
+        }
+      });
       setMessages(messagesData.messages);
     }
-  }, [messagesData]);
+  }, [messagesData, sessionId]);
 
   // Check for pending message from quick start
   useEffect(() => {
@@ -134,9 +148,9 @@ export default function ChatSessionPage() {
         });
       } else if (data.type === 'end') {
         setIsSending(false);
-        // Refresh messages from API
+        // Refresh messages from API using React Query
         setTimeout(() => {
-          messagesAPI.list(sessionId).then((data) => setMessages(data.messages));
+          refetchMessages();
         }, 500);
       } else if (data.type === 'error') {
         console.error('WebSocket error:', data.content);
@@ -240,34 +254,45 @@ export default function ChatSessionPage() {
                   </div>
                   <div className="message-text">
                     {/* Show persisted agent actions from database for all assistant messages */}
-                    {message.role === 'assistant' && message.agent_actions && message.agent_actions.length > 0 && (
-                      <div className="agent-actions-inline">
-                        {message.agent_actions.map((action: any, idx: number) => (
-                          <div key={idx} className="action-block action-action">
-                            <div className="action-usage">
-                              <div className="action-header">
-                                <span className="action-icon">🔧</span>
-                                <strong>Used {action.action_type}</strong>
-                              </div>
-                              {action.action_input && (
-                                <pre className="action-args">{JSON.stringify(action.action_input, null, 2)}</pre>
-                              )}
-                              {action.action_output && (
-                                <div className={`observation ${action.status === 'success' ? 'success' : 'error'}`}>
-                                  <div className="observation-header">
-                                    <span className="observation-icon">
-                                      {action.status === 'success' ? '✅' : '❌'}
-                                    </span>
-                                    <strong>Result</strong>
-                                  </div>
-                                  <pre className="observation-content">{JSON.stringify(action.action_output, null, 2)}</pre>
+                    {(() => {
+                      const hasPersistedActions = message.role === 'assistant' &&
+                                                  message.agent_actions &&
+                                                  Array.isArray(message.agent_actions) &&
+                                                  message.agent_actions.length > 0;
+
+                      if (hasPersistedActions) {
+                        console.log(`[ChatSessionPage] Rendering ${message.agent_actions.length} persisted actions for message ${message.id?.substring(0, 8)}`);
+                      }
+
+                      return hasPersistedActions ? (
+                        <div className="agent-actions-inline">
+                          {message.agent_actions.map((action: any, idx: number) => (
+                            <div key={idx} className="action-block action-action">
+                              <div className="action-usage">
+                                <div className="action-header">
+                                  <span className="action-icon">🔧</span>
+                                  <strong>Used {action.action_type}</strong>
                                 </div>
-                              )}
+                                {action.action_input && (
+                                  <pre className="action-args">{JSON.stringify(action.action_input, null, 2)}</pre>
+                                )}
+                                {action.action_output && (
+                                  <div className={`observation ${action.status === 'success' ? 'success' : 'error'}`}>
+                                    <div className="observation-header">
+                                      <span className="observation-icon">
+                                        {action.status === 'success' ? '✅' : '❌'}
+                                      </span>
+                                      <strong>Result</strong>
+                                    </div>
+                                    <pre className="observation-content">{JSON.stringify(action.action_output, null, 2)}</pre>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
 
                     {/* Show real-time agent actions for the last streaming message */}
                     {message.role === 'assistant' && agentActions && agentActions.length > 0 && index === messages.length - 1 && (

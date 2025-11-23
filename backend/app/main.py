@@ -8,6 +8,9 @@ from app.core.config import settings
 from app.core.storage.database import init_db, close_db
 from app.api.routes import projects, chat, sandbox, files, settings as settings_routes
 
+# Import all models to register them with SQLAlchemy Base before init_db
+import app.models.database  # noqa: F401
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,10 +77,18 @@ if __name__ == "__main__":
     backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     reload_dirs = [os.path.join(backend_dir, "app")]
 
+    # Explicitly exclude data directories from file watching (use relative patterns)
+    reload_excludes = [
+        "data/**",
+        "*.db",
+        "*.db-*",
+    ]
+
     uvicorn.run(
         "app.main:app",
         host=settings.host,
         port=settings.port,
         reload=True,
         reload_dirs=reload_dirs,
+        reload_excludes=reload_excludes,
     )

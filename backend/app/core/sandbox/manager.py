@@ -8,27 +8,30 @@ import docker
 from docker.errors import DockerException, ImageNotFound
 
 from app.core.sandbox.container import SandboxContainer
+from app.core.storage.storage_factory import create_storage
+from app.core.storage.workspace_storage import WorkspaceStorage
 
 
 class ContainerPoolManager:
     """Manage a pool of Docker containers for sandboxed execution."""
 
-    def __init__(self, pool_size: int = 5, workspace_base: str = "./data/workspaces"):
+    def __init__(self, pool_size: int = 5, storage: WorkspaceStorage | None = None):
         """
         Initialize container pool manager.
 
         Args:
             pool_size: Maximum number of containers in pool
-            workspace_base: Base directory for workspace storage
+            storage: Storage backend (will be created from config if not provided)
         """
         self.pool_size = pool_size
-        self.workspace_base = Path(workspace_base)
-        self.workspace_base.mkdir(parents=True, exist_ok=True)
 
         try:
             self.docker_client = docker.from_env()
         except DockerException as e:
             raise Exception(f"Failed to connect to Docker: {e}")
+
+        # Initialize storage backend
+        self.storage = storage or create_storage(docker_client=self.docker_client)
 
         # Track active containers by session ID
         self.active_containers: Dict[str, SandboxContainer] = {}
@@ -43,17 +46,6 @@ class ContainerPoolManager:
             "cpp": "opencodex-env-cpp:latest",
         }
 
-    def _get_workspace_path(self, session_id: str) -> Path:
-        """Get workspace path for a session."""
-        workspace = self.workspace_base / session_id
-        workspace.mkdir(parents=True, exist_ok=True)
-
-        # Create subdirectories
-        (workspace / "project_files").mkdir(exist_ok=True)
-        (workspace / "agent_workspace").mkdir(exist_ok=True)
-        (workspace / "out").mkdir(exist_ok=True)
-
-        return workspace
 
     def _ensure_image_exists(self, env_type: str) -> str:
         """
@@ -138,8 +130,11 @@ class ContainerPoolManager:
         # Ensure image exists
         image_name = self._ensure_image_exists(env_type)
 
-        # Get workspace path
-        workspace_path = self._get_workspace_path(session_id)
+        # Create workspace using storage backend
+        await self.storage.create_workspace(session_id)
+
+        # Get volume configuration from storage backend
+        volume_config = self.storage.get_volume_config(session_id)
 
         # Prepare environment variables
         env_vars = {
@@ -157,12 +152,7 @@ class ContainerPoolManager:
                 detach=True,
                 tty=True,
                 stdin_open=True,
-                volumes={
-                    str(workspace_path.absolute()): {
-                        "bind": "/workspace",
-                        "mode": "rw"
-                    }
-                },
+                volumes=volume_config,
                 environment=env_vars,
                 network_mode="bridge",
                 mem_limit="1g",  # Memory limit
@@ -182,7 +172,9 @@ class ContainerPoolManager:
                         install_cmd = f"npm install -g {' '.join(packages)}"
                         container.exec_run(["bash", "-c", install_cmd])
 
-            sandbox = SandboxContainer(container, str(workspace_path))
+            # For volume/S3 storage, workspace_path is not directly accessible from host
+            workspace_display = f"volume://{session_id}" if hasattr(self.storage, 'get_volume_name') else "N/A"
+            sandbox = SandboxContainer(container, workspace_display)
             self.active_containers[session_id] = sandbox
 
             return sandbox
