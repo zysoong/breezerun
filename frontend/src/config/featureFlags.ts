@@ -6,21 +6,24 @@
 export const featureFlags = {
   // Enable assistant-ui integration for chat interface
   useAssistantUI: () => {
-    // Check environment variable first
-    if (import.meta.env.VITE_ENABLE_ASSISTANT_UI === 'true') {
-      return true;
+    // Check environment variable first (allows explicit disable)
+    if (import.meta.env.VITE_ENABLE_ASSISTANT_UI === 'false') {
+      return false;
     }
 
     // Check localStorage for runtime toggling (useful for A/B testing)
     if (typeof window !== 'undefined') {
       const localFlag = localStorage.getItem('enableAssistantUI');
+      if (localFlag === 'false') {
+        return false;
+      }
       if (localFlag === 'true') {
         return true;
       }
     }
 
-    // Default to false for gradual rollout
-    return false;
+    // Default to TRUE - assistant-ui is now enabled by default
+    return true;
   },
 
   // Helper to toggle the feature flag at runtime

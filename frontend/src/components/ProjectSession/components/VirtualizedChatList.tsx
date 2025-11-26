@@ -1,4 +1,4 @@
-import { useRef, useEffect, forwardRef, useState } from 'react';
+import { useRef, useEffect, forwardRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { MemoizedMessage } from './MemoizedMessage';
 import { Message, StreamEvent } from '../hooks/useOptimizedStreaming';
@@ -37,11 +37,10 @@ const ItemWrapper = ({ children }: { children: React.ReactNode }) => (
 
 export const VirtualizedChatList = ({ messages, isStreaming, streamEvents = [] }: VirtualizedChatListProps) => {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
 
-  // Auto-scroll to bottom when new message arrives OR during streaming (only if toggle is ON)
+  // Auto-scroll to bottom when new message arrives OR during streaming (always enabled now)
   useEffect(() => {
-    if (messages.length > 0 && autoScrollEnabled) {
+    if (messages.length > 0) {
       // Use setTimeout to ensure DOM has updated with new streaming content
       const timeoutId = setTimeout(() => {
         if (virtuosoRef.current) {
@@ -55,7 +54,7 @@ export const VirtualizedChatList = ({ messages, isStreaming, streamEvents = [] }
 
       return () => clearTimeout(timeoutId);
     }
-  }, [messages.length, isStreaming, autoScrollEnabled, streamEvents]);
+  }, [messages.length, isStreaming, streamEvents]);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -90,52 +89,6 @@ export const VirtualizedChatList = ({ messages, isStreaming, streamEvents = [] }
         }}
         style={{ height: '100%', width: '100%' }}
       />
-
-      {/* Auto-scroll toggle button */}
-      <button
-        onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}
-        style={{
-          position: 'absolute',
-          bottom: '20px',
-          right: '20px',
-          width: '44px',
-          height: '44px',
-          borderRadius: '50%',
-          border: autoScrollEnabled ? 'none' : '2px solid #3b82f6',
-          backgroundColor: autoScrollEnabled ? '#3b82f6' : 'white',
-          color: autoScrollEnabled ? 'white' : '#3b82f6',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-          transition: 'all 0.2s ease',
-          zIndex: 10,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        title={autoScrollEnabled ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M10 4L10 16M10 16L6 12M10 16L14 12"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
     </div>
   );
 };

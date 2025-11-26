@@ -19,7 +19,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { chatSessionsAPI } from '@/services/api';
+import { chatSessionsAPI, messagesAPI } from '@/services/api';
 import { useOptimizedStreaming } from '../ProjectSession/hooks/useOptimizedStreaming';
 import { VirtualizedChatList } from '../ProjectSession/components/VirtualizedChatList';
 import '../ProjectSession/ChatSessionPage.css';
@@ -44,7 +44,18 @@ export default function AssistantUIChatPage() {
     enabled: !!sessionId,
   });
 
-  // Use the existing optimized streaming hook
+  // Fetch existing messages from the backend
+  const { data: messagesData } = useQuery({
+    queryKey: ['messages', sessionId],
+    queryFn: () => messagesAPI.list(sessionId!),
+    enabled: !!sessionId,
+    staleTime: 5 * 60 * 1000,        // 5 minutes
+    cacheTime: 10 * 60 * 1000,       // 10 minutes
+    refetchOnWindowFocus: false,     // Prevent refetch on tab switch
+    refetchOnReconnect: false,
+  });
+
+  // Use the existing optimized streaming hook with loaded messages
   const {
     messages,
     streamEvents,
@@ -55,7 +66,7 @@ export default function AssistantUIChatPage() {
     clearError,
   } = useOptimizedStreaming({
     sessionId,
-    initialMessages: [],
+    initialMessages: messagesData?.messages || [],
   });
 
   // Handle pending message from sessionStorage (quick start feature)
