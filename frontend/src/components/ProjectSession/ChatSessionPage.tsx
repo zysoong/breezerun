@@ -37,12 +37,11 @@ export default function ChatSessionPage() {
   });
 
   // Fetch messages with optimized caching (prevents black screen)
-  const { data: messagesData } = useQuery({
+  const {} = useQuery({
     queryKey: ['messages', sessionId],
     queryFn: () => messagesAPI.list(sessionId!),
     enabled: !!sessionId,
     staleTime: 5 * 60 * 1000,        // 5 minutes
-    cacheTime: 10 * 60 * 1000,       // 10 minutes
     refetchOnWindowFocus: false,     // Prevent black screen on tab switch
     refetchOnReconnect: false,
   });
@@ -58,7 +57,6 @@ export default function ChatSessionPage() {
     clearError,
   } = useOptimizedStreaming({
     sessionId,
-    initialMessages: messagesData?.messages || [],
   });
 
   // Handle pending message from sessionStorage (quick start feature)
