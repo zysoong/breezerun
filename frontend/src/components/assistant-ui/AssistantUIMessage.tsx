@@ -111,7 +111,8 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
           streamingText += event.content || '';
         } else if (event.type === 'action_args_chunk') {
           // Streaming tool arguments - partial_args is a raw JSON string
-          const toolId = `${event.tool}-stream`;
+          // Use step to differentiate multiple calls to the same tool
+          const toolId = `${event.tool}-stream-${event.step || 0}`;
           let toolCall = toolCallsMap.get(toolId);
 
           // partial_args is the accumulated JSON string so far
@@ -154,7 +155,7 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
           }
         } else if (event.type === 'action') {
           // Complete tool call with full arguments
-          const toolId = `${event.tool}-stream`;
+          const toolId = `${event.tool}-stream-${event.step || 0}`;
           let toolCall = toolCallsMap.get(toolId);
 
           if (!toolCall) {
@@ -183,12 +184,27 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
             }
           }
         } else if (event.type === 'tool_call_block' && event.block) {
-          // Handle tool_call_block event
+          // Handle tool_call_block event - replaces streaming version
           const blockContent = event.block.content as any;
           const toolId = event.block.id;
+          const toolName = blockContent.tool_name || 'unknown';
+
+          // Remove any streaming version of this tool call (find by prefix)
+          const streamingPrefix = `${toolName}-stream-`;
+          for (const [key] of toolCallsMap) {
+            if (key.startsWith(streamingPrefix)) {
+              toolCallsMap.delete(key);
+              const streamingIndex = toolCalls.findIndex(tc => tc.toolCallId === key);
+              if (streamingIndex !== -1) {
+                toolCalls.splice(streamingIndex, 1);
+              }
+              break; // Only remove one (the most recent streaming one)
+            }
+          }
+
           const toolCall = {
             toolCallId: toolId,
-            toolName: blockContent.tool_name || 'unknown',
+            toolName: toolName,
             args: blockContent.arguments || {},
             argsText: JSON.stringify(blockContent.arguments || {}, null, 2),
             status: { type: blockContent.status === 'complete' ? 'complete' : 'running' } as ToolCallMessagePartStatus,

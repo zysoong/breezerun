@@ -80,7 +80,8 @@ export const useOptimizedStreaming = ({
 
       // Flush stream events
       if (eventBufferRef.current.length > 0) {
-        setStreamEvents(prev => [...prev, ...eventBufferRef.current]);
+        const eventsToFlush = [...eventBufferRef.current];
+        setStreamEvents(prev => [...prev, ...eventsToFlush]);
         eventBufferRef.current = [];
       }
     }, FLUSH_INTERVAL_MS);

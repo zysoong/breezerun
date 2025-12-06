@@ -74,7 +74,9 @@
       "Bash(node test-specific-session.cjs:*)",
       "Bash(node test-navigation-persistence.cjs:*)",
       "Bash(node test-streaming-manager.cjs:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(timeout 60 node:*)",
+      "Bash(node test-tool-streaming.mjs:*)"
     ],
     "deny": [],
     "ask": []
