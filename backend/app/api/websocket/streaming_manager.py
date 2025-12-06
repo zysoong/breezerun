@@ -6,8 +6,6 @@ Ensures messages are properly finalized even when WebSocket disconnects during s
 import asyncio
 from typing import Dict, Optional, Callable, Any
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 class StreamingManager:
     """Manages streaming tasks independently of WebSocket connections"""
