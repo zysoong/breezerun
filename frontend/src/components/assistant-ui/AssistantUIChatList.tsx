@@ -3,9 +3,14 @@
  *
  * This component provides virtualized rendering with assistant-ui message components
  * for optimal performance with large message histories.
+ *
+ * Uses Virtuoso's built-in followOutput behavior for smooth auto-scrolling:
+ * - followOutput="smooth" handles new content scrolling automatically
+ * - atBottomStateChange tracks when user scrolls away from bottom
+ * - No manual scroll effects needed - let Virtuoso handle it
  */
 
-import { useRef, useEffect, forwardRef, memo, useCallback } from 'react';
+import { useRef, forwardRef, memo, useCallback } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { AssistantUIMessage } from './AssistantUIMessage';
 import './AssistantUIChat.css';
@@ -48,47 +53,18 @@ export const AssistantUIChatList: React.FC<AssistantUIChatListProps> = ({
   streamEvents = [],
 }) => {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const isUserScrollingRef = useRef(false);
-  const lastScrollTopRef = useRef(0);
-  const autoScrollEnabledRef = useRef(true);
 
-  // Track whether user is at the bottom
-  const handleScroll = useCallback((e: any) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target as HTMLElement;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
-
-    // If user scrolled up manually, disable auto-scroll
-    if (scrollTop < lastScrollTopRef.current && !isAtBottom) {
-      autoScrollEnabledRef.current = false;
-      isUserScrollingRef.current = true;
-    }
-
-    // Re-enable auto-scroll if user scrolls back to bottom
+  // followOutput as a function - Virtuoso calls this when new items are added
+  // Returns 'smooth' to auto-scroll, or false to stay in place
+  // This is Virtuoso's recommended approach for auto-scroll behavior
+  const handleFollowOutput = useCallback((isAtBottom: boolean) => {
+    // During streaming, use 'auto' for instant scroll (no animation delay)
+    // Otherwise use 'smooth' for nice animation when new messages arrive
     if (isAtBottom) {
-      autoScrollEnabledRef.current = true;
-      isUserScrollingRef.current = false;
+      return isStreaming ? 'auto' : 'smooth';
     }
-
-    lastScrollTopRef.current = scrollTop;
-  }, []);
-
-  // Auto-scroll to bottom only if enabled and not user scrolling
-  useEffect(() => {
-    if (messages.length > 0 && autoScrollEnabledRef.current && !isUserScrollingRef.current) {
-      // Use scrollToIndex for smoother scrolling to last message
-      const timeoutId = setTimeout(() => {
-        if (virtuosoRef.current) {
-          virtuosoRef.current.scrollToIndex({
-            index: messages.length - 1,
-            behavior: isStreaming ? 'auto' : 'smooth',
-            align: 'end',
-          });
-        }
-      }, isStreaming ? 0 : 10);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [messages.length, isStreaming, streamEvents.length]);
+    return false;
+  }, [isStreaming]);
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
@@ -96,8 +72,8 @@ export const AssistantUIChatList: React.FC<AssistantUIChatListProps> = ({
         ref={virtuosoRef}
         data={messages}
         initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
-        onScroll={handleScroll}
-        followOutput={autoScrollEnabledRef.current ? 'auto' : false}
+        followOutput={handleFollowOutput}
+        atBottomThreshold={100}
         itemContent={(index, message) => {
           const isLastMessage = index === messages.length - 1;
           const isCurrentlyStreaming = isStreaming && isLastMessage;
