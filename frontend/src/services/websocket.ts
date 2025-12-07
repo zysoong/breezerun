@@ -31,7 +31,6 @@ export class ChatWebSocket {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
 
@@ -39,7 +38,6 @@ export class ChatWebSocket {
       while (this.messageQueue.length > 0) {
         const queuedMessage = this.messageQueue.shift();
         if (queuedMessage && this.ws && this.ws.readyState === WebSocket.OPEN) {
-          console.log('Sending queued message:', queuedMessage.type);
           this.ws.send(JSON.stringify(queuedMessage));
         }
       }
@@ -48,10 +46,6 @@ export class ChatWebSocket {
     this.ws.onmessage = (event) => {
       try {
         const message: ChatMessage = JSON.parse(event.data);
-        // Log action_args_chunk messages specifically for debugging
-        if (message.type === 'action_args_chunk') {
-          console.log('[WebSocket] Received action_args_chunk:', message);
-        }
         if (this.onMessageCallback) {
           this.onMessageCallback(message);
         }
@@ -65,7 +59,6 @@ export class ChatWebSocket {
     };
 
     this.ws.onclose = () => {
-      console.log('WebSocket closed');
       this.attemptReconnect();
     };
   }
@@ -83,7 +76,6 @@ export class ChatWebSocket {
     }
 
     // If WebSocket is closed or closing, queue the message and reconnect
-    console.log('WebSocket not connected, queuing message and reconnecting...');
     this.messageQueue.push(message);
     this.ensureConnection();
   }
@@ -96,12 +88,10 @@ export class ChatWebSocket {
     // If WebSocket is open, send immediately
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
-      console.log('Cancel message sent');
       return;
     }
 
     // If WebSocket is closed or closing, queue the message and reconnect
-    console.log('WebSocket not connected, queuing cancel and reconnecting...');
     this.messageQueue.push(message);
     this.ensureConnection();
   }
@@ -116,7 +106,6 @@ export class ChatWebSocket {
   private attemptReconnect(): void {
     if (this.reconnectAttempts < this.maxReconnectAttempts && this.onMessageCallback) {
       this.reconnectAttempts++;
-      console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`);
       setTimeout(() => {
         this.connect(this.onMessageCallback!);
       }, 2000 * this.reconnectAttempts);
@@ -130,7 +119,6 @@ export class ChatWebSocket {
   private ensureConnection(): void {
     // If already reconnecting, don't start another reconnection
     if (this.isReconnecting) {
-      console.log('Already reconnecting, message queued');
       return;
     }
 
@@ -141,7 +129,6 @@ export class ChatWebSocket {
 
     // Connection is not good, initiate reconnection
     if (this.onMessageCallback) {
-      console.log('Initiating immediate reconnection for pending message...');
       this.isReconnecting = true;
 
       // Close existing connection if it's in a bad state

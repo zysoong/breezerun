@@ -83,10 +83,6 @@ export const useOptimizedStreaming = ({
       // Flush stream events
       if (eventBufferRef.current.length > 0) {
         const eventsToFlush = [...eventBufferRef.current];
-        console.log('[useOptimizedStreaming] Flushing events:', {
-          count: eventsToFlush.length,
-          types: eventsToFlush.map(e => e.type)
-        });
         setStreamEvents(prev => [...prev, ...eventsToFlush]);
         eventBufferRef.current = [];
       }
@@ -102,15 +98,6 @@ export const useOptimizedStreaming = ({
     switch (data.type) {
       case 'stream_sync':
         // Server sends full stream state for reconnection
-        console.log('[WS] stream_sync received:', {
-          block_id: data.block_id,
-          content_length: data.accumulated_content?.length,
-          streaming: data.streaming,
-          sequence_number: data.sequence_number,
-          has_active_tool_call: !!data.active_tool_call,
-          active_tool_call: data.active_tool_call
-        });
-
         // Initialize stream state for this block
         streamStatesRef.current.set(data.block_id, {
           blockId: data.block_id,
@@ -122,12 +109,10 @@ export const useOptimizedStreaming = ({
         // IMPORTANT: Set streaming state FIRST so merge logic works correctly
         setIsStreaming(true);
         setError(null);
-        console.log('[WS] stream_sync - isStreaming set to true');
 
         // If there's an active tool call, add it to stream events so it displays immediately
         if (data.active_tool_call) {
           const toolCall = data.active_tool_call;
-          console.log('[WS] stream_sync - Adding active tool call to stream events:', toolCall.tool_name);
 
           // Create a synthetic event for the active tool call
           if (toolCall.status === 'streaming') {
@@ -155,7 +140,6 @@ export const useOptimizedStreaming = ({
 
         // Update or create the block with synced content (server is source of truth)
         setBlocks(prev => {
-          console.log('[WS] stream_sync - setBlocks callback, prev has', prev.length, 'blocks');
           const existingIndex = prev.findIndex(b => b.id === data.block_id);
 
           if (existingIndex !== -1) {
@@ -187,9 +171,6 @@ export const useOptimizedStreaming = ({
         });
 
         // Refetch all blocks from API to get tool_call and tool_result blocks
-        // stream_sync only sends text content, tool blocks need to be fetched separately
-        // Use refetchQueries to force an immediate refetch bypassing stale time
-        console.log('[WS] stream_sync - Refetching contentBlocks for session:', sessionId);
         queryClient.refetchQueries({
           queryKey: ['contentBlocks', sessionId],
           exact: true
@@ -198,20 +179,15 @@ export const useOptimizedStreaming = ({
 
       case 'user_text_block':
         // User message received confirmation from server
-        console.log('[WS] user_text_block:', data.block?.id, 'seq:', data.block?.sequence_number);
         if (data.block) {
           setBlocks(prev => {
             // Find the LATEST temp user block (most recently added)
-            // Use reverse find to get the last one in case there are multiple
             const tempBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
-            console.log('[WS] user_text_block - prev has', prev.length, 'blocks,', tempBlocks.length, 'temp blocks');
-            console.log('[WS] user_text_block - temp block ids:', tempBlocks.map(b => b.id));
 
             if (tempBlocks.length > 0) {
               // Replace the first temp block (oldest one) since server processes in order
               const tempIndex = prev.findIndex(b => b.id.startsWith('temp-user-'));
               const updated = [...prev];
-              console.log('[WS] user_text_block - replacing temp block at index', tempIndex, 'with server block');
               updated[tempIndex] = data.block;
               return updated;
             }
@@ -219,11 +195,9 @@ export const useOptimizedStreaming = ({
             // No temp block found - check if server block already exists
             const existingIndex = prev.findIndex(b => b.id === data.block.id);
             if (existingIndex !== -1) {
-              console.log('[WS] user_text_block - server block already exists at index', existingIndex);
               return prev;
             }
 
-            console.log('[WS] user_text_block - adding new server block');
             return [...prev, data.block];
           });
         }
@@ -231,7 +205,6 @@ export const useOptimizedStreaming = ({
 
       case 'assistant_text_start':
         // Assistant started streaming
-        console.log('[WS] assistant_text_start:', data.block_id);
         setIsStreaming(true);
         setError(null);
         setStreamEvents([]);
@@ -280,8 +253,6 @@ export const useOptimizedStreaming = ({
 
           // Append to this block's buffer
           state.bufferedContent += data.content || '';
-        } else {
-          console.warn('[WS] chunk without block_id and no active block');
         }
         break;
 
@@ -323,7 +294,6 @@ export const useOptimizedStreaming = ({
 
       case 'tool_call_block':
         // Tool call block received
-        console.log('[WS] tool_call_block:', data.block?.id);
         if (data.block) {
           setBlocks(prev => [...prev, data.block]);
           eventBufferRef.current.push({
@@ -335,7 +305,6 @@ export const useOptimizedStreaming = ({
 
       case 'tool_result_block':
         // Tool result block received
-        console.log('[WS] tool_result_block:', data.block?.id);
         if (data.block) {
           setBlocks(prev => [...prev, data.block]);
           eventBufferRef.current.push({
@@ -347,8 +316,6 @@ export const useOptimizedStreaming = ({
 
       case 'tool_completed':
         // Tool completed - refetch blocks to get the new tool_call and tool_result blocks
-        console.log('[WS] tool_completed:', data.tool);
-        // Refetch blocks from API to get the completed tool blocks
         queryClient.refetchQueries({
           queryKey: ['contentBlocks', sessionId],
           exact: true
@@ -357,7 +324,6 @@ export const useOptimizedStreaming = ({
 
       case 'assistant_text_end':
         // Assistant finished streaming
-        console.log('[WS] assistant_text_end:', data.block_id);
         const endBlockId = data.block_id;
 
         // Final flush of any remaining content for this block
@@ -406,25 +372,20 @@ export const useOptimizedStreaming = ({
 
           // Refetch blocks from API to get persisted version
           // Use a small delay to ensure backend has persisted the final content
-          console.log('[WS] assistant_text_end - Scheduling refetch after delay');
           setTimeout(async () => {
-            console.log('[WS] assistant_text_end - Refetching contentBlocks now');
             try {
               await queryClient.refetchQueries({
                 queryKey: ['contentBlocks', sessionId],
                 exact: true
               });
-              console.log('[WS] assistant_text_end - Refetch complete, clearing streaming state');
             } catch (err) {
               console.error('[WS] assistant_text_end - Refetch failed:', err);
             }
             // Only clear isStreaming after refetch completes
-            // This ensures the UI stays in streaming mode until we have fresh data
             setIsStreaming(false);
           }, 100); // 100ms delay to let backend persist
         } else {
           // Other blocks still streaming, just refetch to get updated tool blocks
-          console.log('[WS] assistant_text_end - Still streaming, refetching for tool blocks');
           queryClient.refetchQueries({
             queryKey: ['contentBlocks', sessionId],
             exact: true
@@ -434,7 +395,6 @@ export const useOptimizedStreaming = ({
 
       case 'end':
         // Legacy end event
-        console.log('[WS] end event received');
         streamStatesRef.current.clear();
         activeBlockIdRef.current = null;
         eventBufferRef.current = [];
@@ -445,11 +405,9 @@ export const useOptimizedStreaming = ({
 
       case 'cancel_acknowledged':
         // Server acknowledged the cancel request - no action needed
-        console.log('[WS] cancel_acknowledged');
         break;
 
       case 'cancelled':
-        console.log('[WS] cancelled event');
         // Flush remaining content for all streaming blocks
         streamStatesRef.current.forEach((state, blockId) => {
           if (state.bufferedContent) {
@@ -512,7 +470,6 @@ export const useOptimizedStreaming = ({
         break;
 
       case 'title_updated':
-        console.log('[TITLE] Session title updated:', data.title);
         queryClient.invalidateQueries({ queryKey: ['chatSessions'] });
         queryClient.invalidateQueries({ queryKey: ['chatSession', sessionId] });
         break;
@@ -523,7 +480,6 @@ export const useOptimizedStreaming = ({
 
       case 'workspace_files_changed':
         // Workspace files have been modified by a tool
-        console.log('[WS] workspace_files_changed:', data.tool);
         if (onWorkspaceFilesChanged) {
           onWorkspaceFilesChanged();
         }
@@ -531,7 +487,6 @@ export const useOptimizedStreaming = ({
 
       case 'resuming_stream':
         // Legacy reconnection event (fallback when stream_sync not available)
-        console.log('[WS] resuming_stream (legacy):', data.message_id);
         setError(null);
         setStreamEvents([]);
         eventBufferRef.current = [];
@@ -620,7 +575,8 @@ export const useOptimizedStreaming = ({
         break;
 
       default:
-        console.warn('Unknown WebSocket message type:', data.type);
+        // Unknown message type - silently ignore
+        break;
     }
   }, [sessionId, queryClient, onWorkspaceFilesChanged]);
 
@@ -632,25 +588,21 @@ export const useOptimizedStreaming = ({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('[useOptimizedStreaming] WebSocket connected to session:', sessionId);
-      console.log('[useOptimizedStreaming] Current isStreaming state:', isStreaming);
+      // WebSocket connected
     };
 
     ws.onmessage = handleWebSocketMessage;
 
-    ws.onerror = (error) => {
-      console.error('[useOptimizedStreaming] WebSocket error:', error);
+    ws.onerror = () => {
       setIsStreaming(false);
       setError('Connection error occurred');
     };
 
     ws.onclose = () => {
-      console.log('[useOptimizedStreaming] WebSocket closed');
       setIsStreaming(false);
     };
 
     return () => {
-      console.log('[useOptimizedStreaming] Cleaning up WebSocket');
       ws.close();
     };
   }, [sessionId, handleWebSocketMessage]);
@@ -659,43 +611,18 @@ export const useOptimizedStreaming = ({
   // Smart merge: preserve streaming blocks' content while adding new blocks (like tool blocks)
   useEffect(() => {
     if (initialBlocks && initialBlocks.length > 0) {
-      const toolBlocks = initialBlocks.filter(b => b.block_type === 'tool_call' || b.block_type === 'tool_result');
-      console.log('[useOptimizedStreaming] initialBlocks changed:', {
-        count: initialBlocks.length,
-        types: initialBlocks.map(b => b.block_type).join(','),
-        toolBlockCount: toolBlocks.length,
-        toolBlockIds: toolBlocks.map(b => b.id),
-        isStreaming
-      });
-
       setBlocks(prev => {
-        // Log detailed content info for debugging
-        console.log('[useOptimizedStreaming] setBlocks callback - prev:', {
-          count: prev.length,
-          types: prev.map(b => b.block_type).join(','),
-          ids: prev.map(b => b.id),
-          contentLengths: prev.map(b => (b.content?.text || '').length)
-        });
-        console.log('[useOptimizedStreaming] initialBlocks:', {
-          count: initialBlocks.length,
-          types: initialBlocks.map(b => b.block_type).join(','),
-          ids: initialBlocks.map(b => b.id),
-          contentLengths: initialBlocks.map(b => (b.content?.text || '').length)
-        });
-
         // Check for temp user blocks that haven't been confirmed by server yet
         const tempUserBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
 
         // If not streaming, use initialBlocks but preserve any temp user blocks
         if (!isStreaming) {
           if (tempUserBlocks.length > 0) {
-            console.log('[useOptimizedStreaming] Not streaming, preserving temp user blocks:', tempUserBlocks.length);
             // Merge: initialBlocks + temp user blocks (sorted by sequence)
             const merged = [...initialBlocks, ...tempUserBlocks];
             merged.sort((a, b) => a.sequence_number - b.sequence_number);
             return merged;
           }
-          console.log('[useOptimizedStreaming] Not streaming, using initialBlocks directly');
           return initialBlocks;
         }
 
@@ -706,7 +633,6 @@ export const useOptimizedStreaming = ({
         const streamingBlockIds = new Set(
           Array.from(streamStatesRef.current.keys())
         );
-        console.log('[useOptimizedStreaming] streamingBlockIds:', Array.from(streamingBlockIds));
 
         const mergedBlocks: ContentBlock[] = [];
         const seenIds = new Set<string>();
@@ -722,17 +648,11 @@ export const useOptimizedStreaming = ({
             const apiContent = apiBlock?.content?.text || '';
 
             // Use streaming content only if it has MORE content than API (fresher data)
-            // Otherwise, prefer API content as it's more reliable
             if (streamingContent.length > apiContent.length) {
-              console.log('[useOptimizedStreaming] Preserving streaming block (has more content):', block.id,
-                `streaming=${streamingContent.length} vs api=${apiContent.length}`);
               mergedBlocks.push(block);
               seenIds.add(block.id);
-            } else {
-              console.log('[useOptimizedStreaming] Will use API content for block:', block.id,
-                `streaming=${streamingContent.length} vs api=${apiContent.length}`);
-              // Don't add to seenIds so API content will be used
             }
+            // Otherwise, don't add to seenIds so API content will be used
           }
         }
 
@@ -741,8 +661,6 @@ export const useOptimizedStreaming = ({
           if (!seenIds.has(block.id)) {
             // If this is the streaming block (using API content case), mark it as streaming
             if (streamingBlockIds.has(block.id)) {
-              console.log('[useOptimizedStreaming] Using API content for streaming block:', block.id, block.block_type,
-                'content_length:', (block.content?.text || '').length);
               mergedBlocks.push({
                 ...block,
                 block_metadata: { ...block.block_metadata, streaming: true }
@@ -755,10 +673,8 @@ export const useOptimizedStreaming = ({
         }
 
         // Third pass: preserve ALL local blocks that aren't in initialBlocks
-        // This handles: temp user blocks, confirmed user blocks not yet in API, etc.
         for (const block of prev) {
           if (!seenIds.has(block.id) && !apiBlockMap.has(block.id)) {
-            console.log('[useOptimizedStreaming] Preserving local block not in API:', block.id, block.block_type);
             mergedBlocks.push(block);
             seenIds.add(block.id);
           }
@@ -766,13 +682,6 @@ export const useOptimizedStreaming = ({
 
         // Sort by sequence_number
         mergedBlocks.sort((a, b) => a.sequence_number - b.sequence_number);
-
-        console.log('[useOptimizedStreaming] Merged result:', {
-          count: mergedBlocks.length,
-          types: mergedBlocks.map(b => b.block_type).join(','),
-          toolBlockCount: mergedBlocks.filter(b => b.block_type === 'tool_call' || b.block_type === 'tool_result').length,
-          contentLengths: mergedBlocks.map(b => (b.content?.text || '').length)
-        });
 
         return mergedBlocks;
       });
@@ -782,7 +691,6 @@ export const useOptimizedStreaming = ({
   // Send message via WebSocket
   const sendMessage = useCallback((content: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.error('[useOptimizedStreaming] WebSocket not ready');
       return false;
     }
 
@@ -793,18 +701,10 @@ export const useOptimizedStreaming = ({
     const tempId = 'temp-user-' + Date.now();
 
     // Add temp user block to local state immediately
-    // Use functional update to get correct sequence number from current state
     setBlocks(prev => {
       // Compute max sequence number from current blocks
       const maxSeq = prev.reduce((max, b) => Math.max(max, b.sequence_number), -1);
       const newSeqNum = maxSeq + 1;
-
-      console.log('[useOptimizedStreaming] Adding temp user block:', {
-        tempId,
-        newSeqNum,
-        prevBlockCount: prev.length,
-        prevBlockIds: prev.map(b => b.id)
-      });
 
       const tempUserBlock: ContentBlock = {
         id: tempId,

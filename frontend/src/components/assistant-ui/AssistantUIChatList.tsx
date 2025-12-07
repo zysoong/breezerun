@@ -136,18 +136,8 @@ export const AssistantUIChatList: React.FC<AssistantUIChatListProps> = ({
 
   // Group blocks into display units
   const displayGroups = useMemo(() => {
-    const groups = groupBlocks(blocks);
-    const toolBlockCount = blocks.filter(b => b.block_type === 'tool_call' || b.block_type === 'tool_result').length;
-    console.log('[AssistantUIChatList] Grouping blocks:', {
-      inputBlockCount: blocks.length,
-      inputToolBlockCount: toolBlockCount,
-      inputTypes: blocks.map(b => b.block_type).join(','),
-      outputGroupCount: groups.length,
-      groupsWithTools: groups.filter(g => g.toolBlocks.length > 0).length,
-      isStreaming
-    });
-    return groups;
-  }, [blocks, isStreaming]);
+    return groupBlocks(blocks);
+  }, [blocks]);
 
   // followOutput as a function - Virtuoso calls this when new items are added
   // Returns 'smooth' to auto-scroll, or false to stay in place
