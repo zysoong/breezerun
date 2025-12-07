@@ -205,78 +205,103 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
       }
     }
 
-    // Step 3: Add text content
+    // Step 3: Determine the correct order of text and tools based on timestamps
+    // If text was updated AFTER the last tool result, it's a summary that should appear after tools
     const fullText = textContent + streamingText;
-    if (fullText) {
-      parts.push({
-        type: 'text',
-        content: fullText,
-        isStreaming: isStreaming && (streamingText.length > 0 || streamEvents.length > 0),
-      });
-    } else if (isStreaming) {
-      // Show streaming cursor even with no text
-      parts.push({ type: 'text', content: '', isStreaming: true });
-    }
+    const textPart = fullText ? {
+      type: 'text',
+      content: fullText,
+      isStreaming: isStreaming && (streamingText.length > 0 || streamEvents.length > 0),
+    } : (isStreaming ? { type: 'text', content: '', isStreaming: true } : null);
 
-    // Step 4: Add tool calls - persisted first (by sequence), then any streaming-only tools
+    // Calculate if text should come after tools
+    const textBlockUpdatedAt = new Date(block.updated_at).getTime();
+    const toolResultBlocks = toolBlocks.filter(b => b.block_type === 'tool_result');
+    const lastToolResultTime = toolResultBlocks.length > 0
+      ? Math.max(...toolResultBlocks.map(b => new Date(b.created_at).getTime()))
+      : 0;
+
+    // Text comes after tools if:
+    // 1. There are completed tool results
+    // 2. The text block was updated after the last tool result
+    // 3. The text has actual content (not just streaming placeholder)
+    const showTextAfterTools = lastToolResultTime > 0
+      && textBlockUpdatedAt > lastToolResultTime
+      && fullText.length > 0
+      && !isStreaming;  // During streaming, keep text at the end for live updates
+
     // Sort persisted tools by sequence_number
     const sortedPersistedTools = Array.from(toolCallsById.values())
       .sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
-    for (const tool of sortedPersistedTools) {
-      // Check if there's a streaming version with more recent state (case-insensitive)
-      const toolNameLower = tool.toolName.toLowerCase();
-      let streamingVersion = null;
-      let streamingKey = null;
-      for (const [key, state] of streamingState) {
-        if (key.toLowerCase().startsWith(toolNameLower + '-')) {
-          streamingVersion = state;
-          streamingKey = key;
-          break;
+    // Helper function to add tool parts
+    const addToolParts = () => {
+      for (const tool of sortedPersistedTools) {
+        // Check if there's a streaming version with more recent state (case-insensitive)
+        const toolNameLower = tool.toolName.toLowerCase();
+        let streamingVersion = null;
+        let streamingKey = null;
+        for (const [key, state] of streamingState) {
+          if (key.toLowerCase().startsWith(toolNameLower + '-')) {
+            streamingVersion = state;
+            streamingKey = key;
+            break;
+          }
+        }
+
+        if (streamingVersion && !tool.result) {
+          // Tool is still streaming - use streaming state for args
+          parts.push({
+            type: 'tool-call',
+            toolCallId: tool.toolCallId,
+            toolName: tool.toolName,
+            args: streamingVersion.args,
+            argsText: streamingVersion.argsText,
+            status: { type: streamingVersion.status === 'running' ? 'running' : 'running' },
+            addResult: () => {},
+            resume: () => {},
+          });
+          // Remove from streaming state since we've used it
+          if (streamingKey) {
+            streamingState.delete(streamingKey);
+          }
+        } else {
+          // Use persisted state
+          const { sequenceNumber, ...rest } = tool;
+          parts.push({ type: 'tool-call', ...rest });
         }
       }
 
-      if (streamingVersion && !tool.result) {
-        // Tool is still streaming - use streaming state for args
+      // Add any remaining streaming-only tools (not yet persisted)
+      for (const [key, state] of streamingState) {
         parts.push({
           type: 'tool-call',
-          toolCallId: tool.toolCallId,
-          toolName: tool.toolName,
-          args: streamingVersion.args,
-          argsText: streamingVersion.argsText,
-          status: { type: streamingVersion.status === 'running' ? 'running' : 'running' },
+          toolCallId: `streaming-${key}`,
+          toolName: state.toolName,
+          args: state.args,
+          argsText: state.argsText,
+          result: state.result,
+          isError: state.isError,
+          status: { type: state.status === 'complete' ? 'complete' : 'running' } as ToolCallMessagePartStatus,
           addResult: () => {},
           resume: () => {},
         });
-        // Remove from streaming state since we've used it
-        if (streamingKey) {
-          streamingState.delete(streamingKey);
-        }
-      } else {
-        // Use persisted state
-        const { sequenceNumber, ...rest } = tool;
-        parts.push({ type: 'tool-call', ...rest });
       }
-    }
+    };
 
-    // Add any remaining streaming-only tools (not yet persisted)
-    for (const [key, state] of streamingState) {
-      parts.push({
-        type: 'tool-call',
-        toolCallId: `streaming-${key}`,
-        toolName: state.toolName,
-        args: state.args,
-        argsText: state.argsText,
-        result: state.result,
-        isError: state.isError,
-        status: { type: state.status === 'complete' ? 'complete' : 'running' } as ToolCallMessagePartStatus,
-        addResult: () => {},
-        resume: () => {},
-      });
+    // Step 4: Add parts in the correct order based on timestamps
+    if (showTextAfterTools) {
+      // Tools first, then text (text is a summary after tool execution)
+      addToolParts();
+      if (textPart) parts.push(textPart);
+    } else {
+      // Text first, then tools (normal flow or streaming)
+      if (textPart) parts.push(textPart);
+      addToolParts();
     }
 
     return parts;
-  }, [block.id, toolBlocks, isStreaming, streamEvents, textContent]);
+  }, [block.id, block.updated_at, toolBlocks, isStreaming, streamEvents, textContent]);
 
   const renderPart = (part: any, index: number) => {
     if (part.type === 'text') {
