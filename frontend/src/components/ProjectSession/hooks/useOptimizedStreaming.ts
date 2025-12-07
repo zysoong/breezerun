@@ -1,88 +1,93 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { ContentBlock, StreamEvent } from "@/types";
 
 // Industry standard: 30ms interval = 33 updates/second (ChatGPT-like speed)
 const FLUSH_INTERVAL_MS = 30;
 
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  created_at: string;
-  agent_actions?: any[];
-}
-
-export interface StreamEvent {
-  type: 'chunk' | 'action' | 'action_streaming' | 'action_args_chunk' | 'observation';
-  content?: string;
-  tool?: string;
-  args?: any;
-  partial_args?: string;
-  step?: number;
-  success?: boolean;
-  status?: string;
-  metadata?: any;
-}
-
 interface UseOptimizedStreamingProps {
-  sessionId: string | undefined;
-  initialMessages?: Message[];
+  sessionId: string;
+  initialBlocks?: ContentBlock[];
 }
 
-export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOptimizedStreamingProps) => {
-  // Initialize with empty array - we'll update from initialMessages in useEffect
-  // This prevents messages from disappearing when component remounts during streaming
-  const [messages, setMessages] = useState<Message[]>([]);
+interface UseOptimizedStreamingReturn {
+  blocks: ContentBlock[];
+  streamEvents: StreamEvent[];
+  isStreaming: boolean;
+  error: string | null;
+  sendMessage: (content: string) => boolean;
+  cancelStream: () => void;
+  clearError: () => void;
+  isWebSocketReady: boolean;
+}
+
+// Per-block streaming state
+interface BlockStreamState {
+  blockId: string;
+  bufferedContent: string;
+  streaming: boolean;
+}
+
+export const useOptimizedStreaming = ({
+  sessionId,
+  initialBlocks = []
+}: UseOptimizedStreamingProps): UseOptimizedStreamingReturn => {
+  const [blocks, setBlocks] = useState<ContentBlock[]>(initialBlocks);
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasInitializedRef = useRef(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const queryClient = useQueryClient();
 
-  // Buffers for batching (no re-renders when updated)
-  const chunkBufferRef = useRef<string>('');
+  // NEW: Per-block stream state map (replaces single ref)
+  const streamStatesRef = useRef<Map<string, BlockStreamState>>(new Map());
+
+  // Track active streaming block (for events without block_id - legacy fallback)
+  const activeBlockIdRef = useRef<string | null>(null);
+
+  // Buffer for stream events (tool calls, etc.)
   const eventBufferRef = useRef<StreamEvent[]>([]);
 
   // Optimized: 30ms interval for ChatGPT-like streaming speed
+  // Now flushes per-block instead of global buffer
   useEffect(() => {
     if (!isStreaming) return;
 
     const flushInterval = setInterval(() => {
-      const bufferedContent = chunkBufferRef.current;
-      const bufferedEvents = eventBufferRef.current;
+      // Flush each block's buffered content
+      streamStatesRef.current.forEach((state, blockId) => {
+        if (state.bufferedContent) {
+          setBlocks(prev => {
+            const updated = [...prev];
+            const targetIndex = updated.findIndex(b => b.id === blockId);
 
-      if (!bufferedContent && bufferedEvents.length === 0) {
-        return; // Nothing to flush
-      }
+            if (targetIndex !== -1) {
+              const currentText = updated[targetIndex].content?.text || '';
+              updated[targetIndex] = {
+                ...updated[targetIndex],
+                content: { text: currentText + state.bufferedContent }
+              };
+            }
 
-      // Flush messages
-      if (bufferedContent) {
-        setMessages(prev => {
-          const updated = [...prev];
-          const lastMessage = updated[updated.length - 1];
+            return updated;
+          });
 
-          if (lastMessage && lastMessage.role === 'assistant') {
-            // Immutable update
-            updated[updated.length - 1] = {
-              ...lastMessage,
-              content: lastMessage.content + bufferedContent
-            };
-          }
-
-          return updated;
-        });
-      }
+          // Clear this block's buffer after flushing
+          state.bufferedContent = '';
+        }
+      });
 
       // Flush stream events
-      if (bufferedEvents.length > 0) {
-        setStreamEvents(prev => [...prev, ...bufferedEvents]);
+      if (eventBufferRef.current.length > 0) {
+        const eventsToFlush = [...eventBufferRef.current];
+        console.log('[useOptimizedStreaming] Flushing events:', {
+          count: eventsToFlush.length,
+          types: eventsToFlush.map(e => e.type)
+        });
+        setStreamEvents(prev => [...prev, ...eventsToFlush]);
+        eventBufferRef.current = [];
       }
-
-      // Clear buffers after flush
-      chunkBufferRef.current = '';
-      eventBufferRef.current = [];
     }, FLUSH_INTERVAL_MS);
 
     return () => clearInterval(flushInterval);
@@ -93,36 +98,193 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
     const data = JSON.parse(event.data);
 
     switch (data.type) {
-      case 'start':
+      case 'stream_sync':
+        // Server sends full stream state for reconnection
+        console.log('[WS] stream_sync received:', {
+          block_id: data.block_id,
+          content_length: data.accumulated_content?.length,
+          streaming: data.streaming,
+          sequence_number: data.sequence_number,
+          has_active_tool_call: !!data.active_tool_call,
+          active_tool_call: data.active_tool_call
+        });
+
+        // Initialize stream state for this block
+        streamStatesRef.current.set(data.block_id, {
+          blockId: data.block_id,
+          bufferedContent: '',
+          streaming: true
+        });
+        activeBlockIdRef.current = data.block_id;
+
+        // IMPORTANT: Set streaming state FIRST so merge logic works correctly
         setIsStreaming(true);
         setError(null);
-        // Clear buffers for new streaming session
-        chunkBufferRef.current = '';
-        eventBufferRef.current = [];
-        setStreamEvents([]);
+        console.log('[WS] stream_sync - isStreaming set to true');
 
-        // Add new assistant message
-        setMessages(prev => [
+        // If there's an active tool call, add it to stream events so it displays immediately
+        if (data.active_tool_call) {
+          const toolCall = data.active_tool_call;
+          console.log('[WS] stream_sync - Adding active tool call to stream events:', toolCall.tool_name);
+
+          // Create a synthetic event for the active tool call
+          if (toolCall.status === 'streaming') {
+            // Tool is still streaming arguments
+            setStreamEvents([{
+              type: 'action_args_chunk',
+              tool: toolCall.tool_name,
+              partial_args: toolCall.partial_args,
+              step: toolCall.step
+            }]);
+          } else if (toolCall.status === 'running') {
+            // Tool is executing (arguments complete)
+            setStreamEvents([{
+              type: 'action',
+              tool: toolCall.tool_name,
+              args: toolCall.partial_args ? JSON.parse(toolCall.partial_args) : {},
+              step: toolCall.step
+            }]);
+          }
+        } else {
+          // Clear any stale events from previous session
+          setStreamEvents([]);
+        }
+        eventBufferRef.current = [];
+
+        // Update or create the block with synced content (server is source of truth)
+        setBlocks(prev => {
+          console.log('[WS] stream_sync - setBlocks callback, prev has', prev.length, 'blocks');
+          const existingIndex = prev.findIndex(b => b.id === data.block_id);
+
+          if (existingIndex !== -1) {
+            // Replace existing block's content with server state
+            const updated = [...prev];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              content: { text: data.accumulated_content || '' },
+              block_metadata: { streaming: true }
+            };
+            return updated;
+          } else {
+            // Create new block with synced content
+            return [
+              ...prev,
+              {
+                id: data.block_id,
+                chat_session_id: sessionId,
+                sequence_number: data.sequence_number || 0,
+                block_type: 'assistant_text',
+                author: 'assistant',
+                content: { text: data.accumulated_content || '' },
+                block_metadata: { streaming: true },
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              } as ContentBlock
+            ];
+          }
+        });
+
+        // Refetch all blocks from API to get tool_call and tool_result blocks
+        // stream_sync only sends text content, tool blocks need to be fetched separately
+        // Use refetchQueries to force an immediate refetch bypassing stale time
+        console.log('[WS] stream_sync - Refetching contentBlocks for session:', sessionId);
+        queryClient.refetchQueries({
+          queryKey: ['contentBlocks', sessionId],
+          exact: true
+        });
+        break;
+
+      case 'user_text_block':
+        // User message received confirmation from server
+        console.log('[WS] user_text_block:', data.block?.id, 'seq:', data.block?.sequence_number);
+        if (data.block) {
+          setBlocks(prev => {
+            // Find the LATEST temp user block (most recently added)
+            // Use reverse find to get the last one in case there are multiple
+            const tempBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
+            console.log('[WS] user_text_block - prev has', prev.length, 'blocks,', tempBlocks.length, 'temp blocks');
+            console.log('[WS] user_text_block - temp block ids:', tempBlocks.map(b => b.id));
+
+            if (tempBlocks.length > 0) {
+              // Replace the first temp block (oldest one) since server processes in order
+              const tempIndex = prev.findIndex(b => b.id.startsWith('temp-user-'));
+              const updated = [...prev];
+              console.log('[WS] user_text_block - replacing temp block at index', tempIndex, 'with server block');
+              updated[tempIndex] = data.block;
+              return updated;
+            }
+
+            // No temp block found - check if server block already exists
+            const existingIndex = prev.findIndex(b => b.id === data.block.id);
+            if (existingIndex !== -1) {
+              console.log('[WS] user_text_block - server block already exists at index', existingIndex);
+              return prev;
+            }
+
+            console.log('[WS] user_text_block - adding new server block');
+            return [...prev, data.block];
+          });
+        }
+        break;
+
+      case 'assistant_text_start':
+        // Assistant started streaming
+        console.log('[WS] assistant_text_start:', data.block_id);
+        setIsStreaming(true);
+        setError(null);
+        setStreamEvents([]);
+        eventBufferRef.current = [];
+
+        // Initialize stream state for this block
+        streamStatesRef.current.set(data.block_id, {
+          blockId: data.block_id,
+          bufferedContent: '',
+          streaming: true
+        });
+        activeBlockIdRef.current = data.block_id;
+
+        // Add new assistant_text block
+        setBlocks(prev => [
           ...prev,
           {
-            id: 'temp-' + Date.now(),
-            role: 'assistant',
-            content: '',
+            id: data.block_id,
+            chat_session_id: sessionId,
+            sequence_number: data.sequence_number || 0,
+            block_type: 'assistant_text',
+            author: 'assistant',
+            content: { text: '' },
+            block_metadata: { streaming: true },
             created_at: new Date().toISOString(),
-          }
+            updated_at: new Date().toISOString(),
+          } as ContentBlock
         ]);
         break;
 
       case 'chunk':
-        // Just accumulate in buffer - interval will flush
-        chunkBufferRef.current += data.content;
-        eventBufferRef.current.push({
-          type: 'chunk',
-          content: data.content,
-        });
+        // Text chunk from assistant - NOW WITH BLOCK_ID
+        const chunkBlockId = data.block_id || activeBlockIdRef.current;
+
+        if (chunkBlockId) {
+          // Get or create stream state for this block
+          let state = streamStatesRef.current.get(chunkBlockId);
+          if (!state) {
+            state = {
+              blockId: chunkBlockId,
+              bufferedContent: '',
+              streaming: true
+            };
+            streamStatesRef.current.set(chunkBlockId, state);
+          }
+
+          // Append to this block's buffer
+          state.bufferedContent += data.content || '';
+        } else {
+          console.warn('[WS] chunk without block_id and no active block');
+        }
         break;
 
       case 'action_streaming':
+        // Real-time feedback when tool name is first received
         eventBufferRef.current.push({
           type: 'action_streaming',
           content: `Preparing ${data.tool}...`,
@@ -133,135 +295,318 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
         break;
 
       case 'action_args_chunk':
-        // Display argument chunks immediately for real-time streaming (📝 emoji)
-        // This makes file_edit, file_write, etc. show progress as LLM generates args
-        setStreamEvents(prev => [...prev, {
+        // Streaming tool arguments
+        eventBufferRef.current.push({
           type: 'action_args_chunk',
           content: data.partial_args || '',
           tool: data.tool,
           partial_args: data.partial_args,
           step: data.step,
-        }]);
+        });
         break;
 
       case 'action':
-        // Remove all action_args_chunk events for this tool from existing state
-        // This prevents retroactive filtering during render
-        // Then immediately add the action event (not buffered) for instant display
-        setStreamEvents(prev => [
-          ...prev.filter(e => !(e.type === 'action_args_chunk' && e.tool === data.tool)),
-          {
-            type: 'action',
-            content: `Using tool: ${data.tool}`,
-            tool: data.tool,
-            args: data.args,
-            step: data.step,
-          }
-        ]);
+        // Complete tool call
+        setStreamEvents(prev =>
+          prev.filter(e => !(e.type === 'action_args_chunk' && e.tool === data.tool))
+        );
+        eventBufferRef.current.push({
+          type: 'action',
+          content: `Using tool: ${data.tool}`,
+          tool: data.tool,
+          args: data.args,
+          step: data.step,
+        });
         break;
 
-      case 'observation':
-        // Observations should be displayed immediately, not buffered
-        // This ensures file_edit and other tool results appear in real-time
-        setStreamEvents(prev => [...prev, {
-          type: 'observation',
-          content: data.content,
-          success: data.success,
-          metadata: data.metadata,
-          step: data.step,
-        }]);
+      case 'tool_call_block':
+        // Tool call block received
+        console.log('[WS] tool_call_block:', data.block?.id);
+        if (data.block) {
+          setBlocks(prev => [...prev, data.block]);
+          eventBufferRef.current.push({
+            type: 'tool_call_block',
+            block: data.block,
+          });
+        }
+        break;
+
+      case 'tool_result_block':
+        // Tool result block received
+        console.log('[WS] tool_result_block:', data.block?.id);
+        if (data.block) {
+          setBlocks(prev => [...prev, data.block]);
+          eventBufferRef.current.push({
+            type: 'tool_result_block',
+            block: data.block,
+          });
+        }
+        break;
+
+      case 'tool_completed':
+        // Tool completed - refetch blocks to get the new tool_call and tool_result blocks
+        console.log('[WS] tool_completed:', data.tool);
+        // Refetch blocks from API to get the completed tool blocks
+        queryClient.refetchQueries({
+          queryKey: ['contentBlocks', sessionId],
+          exact: true
+        });
+        break;
+
+      case 'assistant_text_end':
+        // Assistant finished streaming
+        console.log('[WS] assistant_text_end:', data.block_id);
+        const endBlockId = data.block_id;
+
+        // Final flush of any remaining content for this block
+        if (endBlockId) {
+          const state = streamStatesRef.current.get(endBlockId);
+          if (state && state.bufferedContent) {
+            setBlocks(prev => {
+              const updated = [...prev];
+              const targetIndex = updated.findIndex(b => b.id === endBlockId);
+
+              if (targetIndex !== -1) {
+                const currentText = updated[targetIndex].content?.text || '';
+                updated[targetIndex] = {
+                  ...updated[targetIndex],
+                  content: { text: currentText + state.bufferedContent },
+                  block_metadata: { streaming: false }
+                };
+              }
+
+              return updated;
+            });
+          }
+
+          // Clear stream state for this block
+          streamStatesRef.current.delete(endBlockId);
+
+          // If this was the active block, clear it
+          if (activeBlockIdRef.current === endBlockId) {
+            activeBlockIdRef.current = null;
+          }
+        }
+
+        // Flush remaining events
+        if (eventBufferRef.current.length > 0) {
+          setStreamEvents(prev => [...prev, ...eventBufferRef.current]);
+          eventBufferRef.current = [];
+        }
+
+        // Check if any blocks are still streaming
+        const stillStreaming = Array.from(streamStatesRef.current.values())
+          .some(s => s.streaming);
+
+        if (!stillStreaming) {
+          // Clear streaming state and events
+          setStreamEvents([]);
+
+          // Refetch blocks from API to get persisted version
+          // Use a small delay to ensure backend has persisted the final content
+          console.log('[WS] assistant_text_end - Scheduling refetch after delay');
+          setTimeout(async () => {
+            console.log('[WS] assistant_text_end - Refetching contentBlocks now');
+            try {
+              await queryClient.refetchQueries({
+                queryKey: ['contentBlocks', sessionId],
+                exact: true
+              });
+              console.log('[WS] assistant_text_end - Refetch complete, clearing streaming state');
+            } catch (err) {
+              console.error('[WS] assistant_text_end - Refetch failed:', err);
+            }
+            // Only clear isStreaming after refetch completes
+            // This ensures the UI stays in streaming mode until we have fresh data
+            setIsStreaming(false);
+          }, 100); // 100ms delay to let backend persist
+        } else {
+          // Other blocks still streaming, just refetch to get updated tool blocks
+          console.log('[WS] assistant_text_end - Still streaming, refetching for tool blocks');
+          queryClient.refetchQueries({
+            queryKey: ['contentBlocks', sessionId],
+            exact: true
+          });
+        }
         break;
 
       case 'end':
-        // Final flush of any remaining buffered content
-        const finalContent = chunkBufferRef.current;
-        const finalEvents = eventBufferRef.current;
-
-        if (finalContent) {
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
-
-            if (lastMessage && lastMessage.role === 'assistant') {
-              updated[updated.length - 1] = {
-                ...lastMessage,
-                content: lastMessage.content + finalContent
-              };
-            }
-
-            return updated;
-          });
-        }
-
-        if (finalEvents.length > 0) {
-          setStreamEvents(prev => [...prev, ...finalEvents]);
-        }
-
-        // Clear buffers
-        chunkBufferRef.current = '';
+        // Legacy end event
+        console.log('[WS] end event received');
+        streamStatesRef.current.clear();
+        activeBlockIdRef.current = null;
         eventBufferRef.current = [];
-
-        // Stop streaming
         setIsStreaming(false);
         setStreamEvents([]);
+        queryClient.invalidateQueries({ queryKey: ['contentBlocks', sessionId] });
+        break;
 
-        // Refetch messages from API to get persisted version
-        queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
+      case 'cancel_acknowledged':
+        // Server acknowledged the cancel request - no action needed
+        console.log('[WS] cancel_acknowledged');
         break;
 
       case 'cancelled':
-        // Flush remaining content
-        if (chunkBufferRef.current) {
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
+        console.log('[WS] cancelled event');
+        // Flush remaining content for all streaming blocks
+        streamStatesRef.current.forEach((state, blockId) => {
+          if (state.bufferedContent) {
+            setBlocks(prev => {
+              const updated = [...prev];
+              const targetIndex = updated.findIndex(b => b.id === blockId);
 
-            if (lastMessage && lastMessage.role === 'assistant') {
-              updated[updated.length - 1] = {
-                ...lastMessage,
-                content: lastMessage.content + chunkBufferRef.current
-              };
-            }
+              if (targetIndex !== -1) {
+                const currentText = updated[targetIndex].content?.text || '';
+                updated[targetIndex] = {
+                  ...updated[targetIndex],
+                  content: { text: currentText + state.bufferedContent },
+                  block_metadata: { streaming: false, cancelled: true }
+                };
+              }
 
-            return updated;
-          });
-        }
+              return updated;
+            });
+          }
+        });
 
-        chunkBufferRef.current = '';
+        streamStatesRef.current.clear();
+        activeBlockIdRef.current = null;
         eventBufferRef.current = [];
         setIsStreaming(false);
         break;
 
       case 'error':
-        console.error('WebSocket error:', data.content);
-        setError(data.content || 'An error occurred');
-        setIsStreaming(false);
-        // Flush any pending content
-        if (chunkBufferRef.current) {
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
+        console.error('WebSocket error:', data.content || data.message);
+        const errorMessage = data.content || data.message || 'An error occurred';
 
-            if (lastMessage && lastMessage.role === 'assistant') {
-              updated[updated.length - 1] = {
-                ...lastMessage,
-                content: lastMessage.content + chunkBufferRef.current
-              };
-            }
-
-            return updated;
-          });
+        if (!errorMessage.includes('No active task found')) {
+          setError(errorMessage);
         }
-        chunkBufferRef.current = '';
+
+        // Flush any remaining content
+        streamStatesRef.current.forEach((state, blockId) => {
+          if (state.bufferedContent) {
+            setBlocks(prev => {
+              const updated = [...prev];
+              const targetIndex = updated.findIndex(b => b.id === blockId);
+
+              if (targetIndex !== -1) {
+                const currentText = updated[targetIndex].content?.text || '';
+                updated[targetIndex] = {
+                  ...updated[targetIndex],
+                  content: { text: currentText + state.bufferedContent }
+                };
+              }
+
+              return updated;
+            });
+          }
+        });
+
+        streamStatesRef.current.clear();
+        activeBlockIdRef.current = null;
         eventBufferRef.current = [];
+        setIsStreaming(false);
         break;
 
       case 'title_updated':
         console.log('[TITLE] Session title updated:', data.title);
-        // Invalidate chat sessions query to refresh sidebar with new title
         queryClient.invalidateQueries({ queryKey: ['chatSessions'] });
-        // Invalidate current session query to refresh header title
         queryClient.invalidateQueries({ queryKey: ['chatSession', sessionId] });
+        break;
+
+      case 'heartbeat':
+        // Heartbeat message to keep connection alive
+        break;
+
+      case 'resuming_stream':
+        // Legacy reconnection event (fallback when stream_sync not available)
+        console.log('[WS] resuming_stream (legacy):', data.message_id);
+        setError(null);
+        setStreamEvents([]);
+        eventBufferRef.current = [];
+
+        const resumedBlockId = data.message_id || 'temp-resumed-' + Date.now();
+
+        // Initialize stream state
+        streamStatesRef.current.set(resumedBlockId, {
+          blockId: resumedBlockId,
+          bufferedContent: '',
+          streaming: true
+        });
+        activeBlockIdRef.current = resumedBlockId;
+
+        setBlocks(prev => {
+          const existingBlock = prev.find(b => b.id === data.message_id);
+          if (existingBlock) {
+            // Mark existing block as streaming again
+            return prev.map(b =>
+              b.id === data.message_id
+                ? { ...b, block_metadata: { ...b.block_metadata, streaming: true } }
+                : b
+            );
+          }
+
+          // Create new block if not found
+          return [
+            ...prev,
+            {
+              id: resumedBlockId,
+              chat_session_id: sessionId,
+              sequence_number: 0,
+              block_type: 'assistant_text',
+              author: 'assistant',
+              content: { text: '' },
+              block_metadata: { streaming: true },
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            } as ContentBlock
+          ];
+        });
+
+        setIsStreaming(true);
+        break;
+
+      case 'start':
+        // Legacy start event
+        setIsStreaming(true);
+        setError(null);
+        setStreamEvents([]);
+        eventBufferRef.current = [];
+
+        const messageId = data.message_id || 'temp-' + Date.now();
+        streamStatesRef.current.set(messageId, {
+          blockId: messageId,
+          bufferedContent: '',
+          streaming: true
+        });
+        activeBlockIdRef.current = messageId;
+
+        setBlocks(prev => [
+          ...prev,
+          {
+            id: messageId,
+            chat_session_id: sessionId,
+            sequence_number: prev.length,
+            block_type: 'assistant_text',
+            author: 'assistant',
+            content: { text: '' },
+            block_metadata: { streaming: true },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as ContentBlock
+        ]);
+        break;
+
+      case 'observation':
+        // Legacy observation event
+        eventBufferRef.current.push({
+          type: 'tool_result_block',
+          content: data.content,
+          success: data.success,
+          metadata: data.metadata,
+          step: data.step,
+        });
         break;
 
       default:
@@ -277,7 +622,8 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('[useOptimizedStreaming] WebSocket connected');
+      console.log('[useOptimizedStreaming] WebSocket connected to session:', sessionId);
+      console.log('[useOptimizedStreaming] Current isStreaming state:', isStreaming);
     };
 
     ws.onmessage = handleWebSocketMessage;
@@ -293,34 +639,135 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
       setIsStreaming(false);
     };
 
-    // Cleanup on unmount
     return () => {
       console.log('[useOptimizedStreaming] Cleaning up WebSocket');
       ws.close();
     };
   }, [sessionId, handleWebSocketMessage]);
 
-  // Update messages when external data changes
-  // This handles both initial load and updates when navigating back to the chat
+  // Update blocks when external data changes
+  // Smart merge: preserve streaming blocks' content while adding new blocks (like tool blocks)
   useEffect(() => {
-    if (initialMessages && initialMessages.length > 0) {
-      // On first mount, always set messages from initialMessages
-      if (!hasInitializedRef.current) {
-        setMessages(initialMessages);
-        hasInitializedRef.current = true;
-        return;
-      }
+    if (initialBlocks && initialBlocks.length > 0) {
+      const toolBlocks = initialBlocks.filter(b => b.block_type === 'tool_call' || b.block_type === 'tool_result');
+      console.log('[useOptimizedStreaming] initialBlocks changed:', {
+        count: initialBlocks.length,
+        types: initialBlocks.map(b => b.block_type).join(','),
+        toolBlockCount: toolBlocks.length,
+        toolBlockIds: toolBlocks.map(b => b.id),
+        isStreaming
+      });
 
-      // On subsequent updates, only update if we have more messages than before
-      // This prevents messages from disappearing when navigating back during streaming
-      setMessages(prev => {
-        if (prev.length > 0 && initialMessages.length <= prev.length) {
-          return prev;
+      setBlocks(prev => {
+        // Log detailed content info for debugging
+        console.log('[useOptimizedStreaming] setBlocks callback - prev:', {
+          count: prev.length,
+          types: prev.map(b => b.block_type).join(','),
+          ids: prev.map(b => b.id),
+          contentLengths: prev.map(b => (b.content?.text || '').length)
+        });
+        console.log('[useOptimizedStreaming] initialBlocks:', {
+          count: initialBlocks.length,
+          types: initialBlocks.map(b => b.block_type).join(','),
+          ids: initialBlocks.map(b => b.id),
+          contentLengths: initialBlocks.map(b => (b.content?.text || '').length)
+        });
+
+        // Check for temp user blocks that haven't been confirmed by server yet
+        const tempUserBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
+
+        // If not streaming, use initialBlocks but preserve any temp user blocks
+        if (!isStreaming) {
+          if (tempUserBlocks.length > 0) {
+            console.log('[useOptimizedStreaming] Not streaming, preserving temp user blocks:', tempUserBlocks.length);
+            // Merge: initialBlocks + temp user blocks (sorted by sequence)
+            const merged = [...initialBlocks, ...tempUserBlocks];
+            merged.sort((a, b) => a.sequence_number - b.sequence_number);
+            return merged;
+          }
+          console.log('[useOptimizedStreaming] Not streaming, using initialBlocks directly');
+          return initialBlocks;
         }
-        return initialMessages;
+
+        // During streaming, merge intelligently:
+        // - Keep streaming blocks' content if it has MORE content than API (more up-to-date)
+        // - If streaming block is empty or has less content, prefer API content but mark as streaming
+        // - Add any blocks from initialBlocks we don't have (like tool_call, tool_result)
+        const streamingBlockIds = new Set(
+          Array.from(streamStatesRef.current.keys())
+        );
+        console.log('[useOptimizedStreaming] streamingBlockIds:', Array.from(streamingBlockIds));
+
+        const mergedBlocks: ContentBlock[] = [];
+        const seenIds = new Set<string>();
+
+        // Build a map of API content for comparison
+        const apiBlockMap = new Map(initialBlocks.map(b => [b.id, b]));
+
+        // First pass: handle streaming blocks - compare with API content
+        for (const block of prev) {
+          if (streamingBlockIds.has(block.id)) {
+            const streamingContent = block.content?.text || '';
+            const apiBlock = apiBlockMap.get(block.id);
+            const apiContent = apiBlock?.content?.text || '';
+
+            // Use streaming content only if it has MORE content than API (fresher data)
+            // Otherwise, prefer API content as it's more reliable
+            if (streamingContent.length > apiContent.length) {
+              console.log('[useOptimizedStreaming] Preserving streaming block (has more content):', block.id,
+                `streaming=${streamingContent.length} vs api=${apiContent.length}`);
+              mergedBlocks.push(block);
+              seenIds.add(block.id);
+            } else {
+              console.log('[useOptimizedStreaming] Will use API content for block:', block.id,
+                `streaming=${streamingContent.length} vs api=${apiContent.length}`);
+              // Don't add to seenIds so API content will be used
+            }
+          }
+        }
+
+        // Second pass: add all blocks from initialBlocks that we don't have
+        for (const block of initialBlocks) {
+          if (!seenIds.has(block.id)) {
+            // If this is the streaming block (using API content case), mark it as streaming
+            if (streamingBlockIds.has(block.id)) {
+              console.log('[useOptimizedStreaming] Using API content for streaming block:', block.id, block.block_type,
+                'content_length:', (block.content?.text || '').length);
+              mergedBlocks.push({
+                ...block,
+                block_metadata: { ...block.block_metadata, streaming: true }
+              });
+            } else {
+              mergedBlocks.push(block);
+            }
+            seenIds.add(block.id);
+          }
+        }
+
+        // Third pass: preserve ALL local blocks that aren't in initialBlocks
+        // This handles: temp user blocks, confirmed user blocks not yet in API, etc.
+        for (const block of prev) {
+          if (!seenIds.has(block.id) && !apiBlockMap.has(block.id)) {
+            console.log('[useOptimizedStreaming] Preserving local block not in API:', block.id, block.block_type);
+            mergedBlocks.push(block);
+            seenIds.add(block.id);
+          }
+        }
+
+        // Sort by sequence_number
+        mergedBlocks.sort((a, b) => a.sequence_number - b.sequence_number);
+
+        console.log('[useOptimizedStreaming] Merged result:', {
+          count: mergedBlocks.length,
+          types: mergedBlocks.map(b => b.block_type).join(','),
+          toolBlockCount: mergedBlocks.filter(b => b.block_type === 'tool_call' || b.block_type === 'tool_result').length,
+          contentLengths: mergedBlocks.map(b => (b.content?.text || '').length)
+        });
+
+        return mergedBlocks;
       });
     }
-  }, [initialMessages]);
+  }, [initialBlocks, isStreaming]);
 
   // Send message via WebSocket
   const sendMessage = useCallback((content: string) => {
@@ -333,15 +780,36 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
       return false;
     }
 
-    // Add user message to local state immediately
-    const userMessage: Message = {
-      id: 'temp-user-' + Date.now(),
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-    };
+    const tempId = 'temp-user-' + Date.now();
 
-    setMessages(prev => [...prev, userMessage]);
+    // Add temp user block to local state immediately
+    // Use functional update to get correct sequence number from current state
+    setBlocks(prev => {
+      // Compute max sequence number from current blocks
+      const maxSeq = prev.reduce((max, b) => Math.max(max, b.sequence_number), -1);
+      const newSeqNum = maxSeq + 1;
+
+      console.log('[useOptimizedStreaming] Adding temp user block:', {
+        tempId,
+        newSeqNum,
+        prevBlockCount: prev.length,
+        prevBlockIds: prev.map(b => b.id)
+      });
+
+      const tempUserBlock: ContentBlock = {
+        id: tempId,
+        chat_session_id: sessionId,
+        sequence_number: newSeqNum,
+        block_type: 'user_text',
+        author: 'user',
+        content: { text: content },
+        block_metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      return [...prev, tempUserBlock];
+    });
 
     // Send via WebSocket
     wsRef.current.send(JSON.stringify({
@@ -350,7 +818,7 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
     }));
 
     return true;
-  }, []);
+  }, [sessionId]);
 
   // Cancel streaming
   const cancelStream = useCallback(() => {
@@ -365,7 +833,7 @@ export const useOptimizedStreaming = ({ sessionId, initialMessages = [] }: UseOp
   }, []);
 
   return {
-    messages,
+    blocks,
     streamEvents,
     isStreaming,
     error,

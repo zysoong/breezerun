@@ -1,7 +1,7 @@
 """Global registry for managing agent execution tasks independently of WebSocket connections."""
 
 import asyncio
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
 

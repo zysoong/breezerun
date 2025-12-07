@@ -1,29 +1,6 @@
 import { create } from 'zustand';
-import type { ChatSession, Message } from '@/types';
+import {AgentAction, StreamEvent} from "@/types";
 
-export type StreamEventType = 'chunk' | 'thought' | 'action' | 'action_streaming' | 'action_args_chunk' | 'observation';
-
-export interface StreamEvent {
-  type: StreamEventType;
-  content: string;
-  tool?: string;
-  args?: any;
-  partial_args?: string;  // For action_args_chunk events
-  success?: boolean;
-  status?: string;
-  step?: number;
-}
-
-// Legacy AgentAction interface for backward compatibility
-export interface AgentAction {
-  type: 'thought' | 'action' | 'action_streaming' | 'observation';
-  content: string;
-  tool?: string;
-  args?: any;
-  success?: boolean;
-  status?: string;
-  step?: number;
-}
 
 interface ChatState {
   activeSessionId: string | null;

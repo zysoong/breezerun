@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.storage.database import init_db, close_db
 from app.api.routes import projects, chat, sandbox, files, settings as settings_routes
+from app.api.websocket.streaming_manager import streaming_manager
 
 # Import all models to register them with SQLAlchemy Base before init_db
 import app.models.database  # noqa: F401
@@ -20,9 +21,18 @@ async def lifespan(app: FastAPI):
     await init_db()
     print("Database initialized successfully")
 
+    # Start streaming manager
+    print("Starting streaming manager...")
+    await streaming_manager.start()
+    print("Streaming manager started successfully")
+
     yield
 
     # Shutdown
+    print("Stopping streaming manager...")
+    await streaming_manager.stop()
+    print("Streaming manager stopped successfully")
+
     print("Closing database connections...")
     await close_db()
     print("Application shutdown complete")

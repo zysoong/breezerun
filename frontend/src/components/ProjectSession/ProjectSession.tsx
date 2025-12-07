@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsAPI, chatSessionsAPI } from '@/services/api';
 import { useChatStore } from '@/stores/chatStore';
 import ChatSessionTabs from './ChatSessionTabs';
-import ChatView from './ChatView';
 import FilePanel from './FilePanel';
 import AgentConfigPanel from './AgentConfigPanel';
 import './ProjectSession.css';
@@ -58,7 +57,6 @@ export default function ProjectSession() {
   }
 
   const chatSessions = sessionsData?.chat_sessions || [];
-  const activeChatSession = chatSessions.find(s => s.id === activeSessionId);
 
   return (
     <div className="project-session">
@@ -99,16 +97,6 @@ export default function ProjectSession() {
             activeSessionId={activeSessionId}
             onSelectSession={setActiveSession}
           />
-        </div>
-
-        <div className="chat-main">
-          {activeChatSession ? (
-            <ChatView session={activeChatSession} />
-          ) : (
-            <div className="no-session-selected">
-              <p>Select a chat session or create a new one to get started</p>
-            </div>
-          )}
         </div>
 
         <FilePanel projectId={projectId!} />

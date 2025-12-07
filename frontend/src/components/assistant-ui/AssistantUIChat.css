@@ -1,0 +1,108 @@
+/**
+ * AssistantUIChat.css - Styles for assistant-ui chat components
+ */
+
+/* Blinking cursor animation */
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Pulse animation for running status */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Message wrapper styles (inherited from existing) */
+.message-wrapper {
+  padding: 20px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.message-wrapper:last-child {
+  border-bottom: none;
+}
+
+.message-wrapper.user {
+  background: #fafafa;
+}
+
+.message-wrapper.assistant {
+  background: white;
+}
+
+.message-content {
+  display: flex;
+  gap: 16px;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.message-role {
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.user-avatar {
+  background: #3b82f6;
+  color: white;
+}
+
+.assistant-avatar {
+  background: #10b981;
+  color: white;
+}
+
+.message-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-body {
+  color: #111827;
+  line-height: 1.6;
+}
+
+/* Empty chat styles */
+.empty-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.empty-chat h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.empty-chat p {
+  margin: 0;
+  font-size: 14px;
+}

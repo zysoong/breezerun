@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Registry Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status-panel {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .status-box {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .status-box h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #495057;
+        }
+        .status-box.success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .status-box.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .status-box.warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        .log-container {
+            height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-left: 3px solid #007bff;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        .log-entry.success {
+            border-left-color: #28a745;
+            background: #f1f8f1;
+        }
+        .log-entry.warning {
+            border-left-color: #ffc107;
+            background: #fffef5;
+        }
+        .message-display {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .chunk {
+            display: inline;
+            background: #e3f2fd;
+            padding: 1px 2px;
+            margin: 0 1px;
+            border-radius: 2px;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .test-step {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .test-step .icon {
+            font-size: 20px;
+        }
+        .test-step.pending .icon { color: #6c757d; }
+        .test-step.running .icon { color: #ffc107; }
+        .test-step.success .icon { color: #28a745; }
+        .test-step.error .icon { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Task Registry Integration Test</h1>
+        <p>This test verifies that the WebSocket task registry properly handles streaming persistence across disconnections.</p>
+
+        <div class="controls">
+            <button id="startTestBtn" onclick="runFullTest()">Run Full Test Suite</button>
+            <button id="manualBtn" onclick="startManualTest()">Manual Test Mode</button>
+            <button id="clearBtn" onclick="clearLogs()">Clear Logs</button>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-box" id="ws1Status">
+                <h3>WebSocket 1 (Original)</h3>
+                <div>State: <span id="ws1State">Not Connected</span></div>
+                <div>Messages: <span id="ws1Messages">0</span></div>
+                <div>Chunks: <span id="ws1Chunks">0</span></div>
+            </div>
+            <div class="status-box" id="ws2Status">
+                <h3>WebSocket 2 (Reconnection)</h3>
+                <div>State: <span id="ws2State">Not Connected</span></div>
+                <div>Messages: <span id="ws2Messages">0</span></div>
+                <div>Chunks: <span id="ws2Chunks">0</span></div>
+            </div>
+            <div class="status-box" id="registryStatus">
+                <h3>Task Registry Status</h3>
+                <div>Active Tasks: <span id="activeTasks">Unknown</span></div>
+                <div>Buffer Size: <span id="bufferSize">Unknown</span></div>
+            </div>
+            <div class="status-box" id="testStatus">
+                <h3>Test Progress</h3>
+                <div id="testSteps"></div>
+            </div>
+        </div>
+
+        <div class="test-container">
+            <h3>Test Steps:</h3>
+            <div id="testStepList">
+                <div class="test-step pending" id="step1">
+                    <span class="icon">⏳</span>
+                    <span>Connect WebSocket 1 and send message</span>
+                </div>
+                <div class="test-step pending" id="step2">
+                    <span class="icon">⏳</span>
+                    <span>Verify streaming starts and chunks are received</span>
+                </div>
+                <div class="test-step pending" id="step3">
+                    <span class="icon">⏳</span>
+                    <span>Disconnect WebSocket 1 mid-stream</span>
+                </div>
+                <div class="test-step pending" id="step4">
+                    <span class="icon">⏳</span>
+                    <span>Connect WebSocket 2 to same session</span>
+                </div>
+                <div class="test-step pending" id="step5">
+                    <span class="icon">⏳</span>
+                    <span>Verify WebSocket 2 receives buffered chunks</span>
+                </div>
+                <div class="test-step pending" id="step6">
+                    <span class="icon">⏳</span>
+                    <span>Verify WebSocket 2 continues receiving new chunks</span>
+                </div>
+                <div class="test-step pending" id="step7">
+                    <span class="icon">⏳</span>
+                    <span>Verify task completes and is removed from registry</span>
+                </div>
+            </div>
+        </div>
+
+        <h3>Message Display</h3>
+        <div class="message-display" id="messageDisplay"></div>
+
+        <h3>Test Log</h3>
+        <div class="log-container" id="logContainer"></div>
+    </div>
+
+    <script>
+        let ws1 = null;
+        let ws2 = null;
+        let ws1ChunkCount = 0;
+        let ws2ChunkCount = 0;
+        let ws1MessageCount = 0;
+        let ws2MessageCount = 0;
+        let testSessionId = null;
+        let messageContent = '';
+        let isTestRunning = false;
+
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('messageDisplay').innerHTML = '';
+            messageContent = '';
+        }
+
+        function updateStepStatus(stepId, status) {
+            const step = document.getElementById(stepId);
+            step.className = `test-step ${status}`;
+            const icon = step.querySelector('.icon');
+            switch(status) {
+                case 'running':
+                    icon.textContent = '⏱️';
+                    break;
+                case 'success':
+                    icon.textContent = '✅';
+                    break;
+                case 'error':
+                    icon.textContent = '❌';
+                    break;
+                default:
+                    icon.textContent = '⏳';
+            }
+        }
+
+        function addChunk(content, wsNumber) {
+            const display = document.getElementById('messageDisplay');
+            const chunk = document.createElement('span');
+            chunk.className = 'chunk';
+            chunk.textContent = content;
+            chunk.title = `From WS${wsNumber}`;
+            display.appendChild(chunk);
+            messageContent += content;
+        }
+
+        async function createTestSession() {
+            // Create a test session via API
+            try {
+                const projectResponse = await fetch('http://localhost:8000/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: `Test Project ${Date.now()}`,
+                        description: 'Task Registry Test'
+                    })
+                });
+                const project = await projectResponse.json();
+
+                const sessionResponse = await fetch('http://localhost:8000/api/chat-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_id: project.id,
+                        name: `Test Session ${Date.now()}`
+                    })
+                });
+                const session = await sessionResponse.json();
+
+                testSessionId = session.id;
+                log(`Created test session: ${testSessionId}`, 'success');
+                return testSessionId;
+            } catch (error) {
+                log(`Failed to create test session: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        function connectWebSocket1(sessionId) {
+            return new Promise((resolve, reject) => {
+                updateStepStatus('step1', 'running');
+                log('Connecting WebSocket 1...', 'info');
+
+                ws1 = new WebSocket(`ws://localhost:8000/api/chat/${sessionId}/ws`);
+
+                ws1.onopen = () => {
+                    log('WebSocket 1 connected', 'success');
+                    document.getElementById('ws1State').textContent = 'Connected';
+                    document.getElementById('ws1Status').className = 'status-box success';
+
+                    // Send a test message
+                    setTimeout(() => {
+                        log('Sending test message via WebSocket 1...', 'info');
+                        ws1.send(JSON.stringify({
+                            type: 'message',
+                            content: 'Generate a long response about the history of computing that will stream for at least 10 seconds'
+                        }));
+                        updateStepStatus('step1', 'success');
+                        resolve();
+                    }, 500);
+                };
+
+                ws1.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'chunk') {
+                        ws1ChunkCount++;
+                        document.getElementById('ws1Chunks').textContent = ws1ChunkCount;
+                        addChunk(data.content, 1);
+
+                        if (ws1ChunkCount === 1) {
+                            log('WebSocket 1 receiving chunks', 'success');
+                            updateStepStatus('step2', 'success');
+                        }
+                    } else if (data.type === 'user_message_saved') {
+                        ws1MessageCount++;
+                        document.getElementById('ws1Messages').textContent = ws1MessageCount;
+                        log(`WebSocket 1 message saved: ${data.message_id}`, 'info');
+                    } else if (data.type === 'start') {
+                        log('WebSocket 1 streaming started', 'success');
+                        updateStepStatus('step2', 'running');
+                    } else if (data.type === 'end') {
+                        log('WebSocket 1 streaming ended', 'success');
+                    }
+                };
+
+                ws1.onerror = (error) => {
+                    log(`WebSocket 1 error: ${error}`, 'error');
+                    reject(error);
+                };
+
+                ws1.onclose = () => {
+                    log('WebSocket 1 disconnected', 'warning');
+                    document.getElementById('ws1State').textContent = 'Disconnected';
+                    document.getElementById('ws1Status').className = 'status-box warning';
+                };
+
+                setTimeout(() => {
+                    if (ws1.readyState !== WebSocket.OPEN) {
+                        reject(new Error('WebSocket 1 connection timeout'));
+                    }
+                }, 5000);
+            });
+        }
+
+        function disconnectWebSocket1() {
+            updateStepStatus('step3', 'running');
+            log('Disconnecting WebSocket 1 mid-stream...', 'info');
+            if (ws1) {
+                ws1.close();
+                ws1 = null;
+                updateStepStatus('step3', 'success');
+                log('WebSocket 1 disconnected intentionally', 'success');
+            }
+        }
+
+        function connectWebSocket2(sessionId) {
+            return new Promise((resolve, reject) => {
+                updateStepStatus('step4', 'running');
+                log('Connecting WebSocket 2 (reconnection)...', 'info');
+
+                ws2 = new WebSocket(`ws://localhost:8000/api/chat/${sessionId}/ws`);
+                let receivedResuming = false;
+                let receivedBufferedChunks = false;
+                let bufferedChunkCount = 0;
+
+                ws2.onopen = () => {
+                    log('WebSocket 2 connected', 'success');
+                    document.getElementById('ws2State').textContent = 'Connected';
+                    document.getElementById('ws2Status').className = 'status-box success';
+                    updateStepStatus('step4', 'success');
+                };
+
+                ws2.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'resuming_stream') {
+                        log(`WebSocket 2 resuming stream for message: ${data.message_id}`, 'success');
+                        receivedResuming = true;
+                        updateStepStatus('step5', 'running');
+                    } else if (data.type === 'chunk') {
+                        ws2ChunkCount++;
+                        document.getElementById('ws2Chunks').textContent = ws2ChunkCount;
+
+                        if (!receivedBufferedChunks && receivedResuming) {
+                            bufferedChunkCount++;
+                            if (bufferedChunkCount >= 5) { // After receiving some buffered chunks
+                                receivedBufferedChunks = true;
+                                log(`WebSocket 2 received ${bufferedChunkCount} buffered chunks`, 'success');
+                                updateStepStatus('step5', 'success');
+                                updateStepStatus('step6', 'running');
+                            }
+                        }
+
+                        addChunk(data.content, 2);
+
+                        if (ws2ChunkCount > bufferedChunkCount + 5) {
+                            updateStepStatus('step6', 'success');
+                        }
+                    } else if (data.type === 'end') {
+                        log('WebSocket 2 received stream end', 'success');
+                        updateStepStatus('step7', 'success');
+                        resolve();
+                    } else if (data.type === 'heartbeat') {
+                        // Ignore heartbeat messages
+                    } else {
+                        log(`WebSocket 2 received: ${data.type}`, 'info');
+                    }
+                };
+
+                ws2.onerror = (error) => {
+                    log(`WebSocket 2 error: ${error}`, 'error');
+                    reject(error);
+                };
+
+                ws2.onclose = () => {
+                    log('WebSocket 2 disconnected', 'warning');
+                    document.getElementById('ws2State').textContent = 'Disconnected';
+                    document.getElementById('ws2Status').className = 'status-box warning';
+                };
+
+                setTimeout(() => {
+                    if (ws2.readyState !== WebSocket.OPEN) {
+                        reject(new Error('WebSocket 2 connection timeout'));
+                    }
+                }, 5000);
+            });
+        }
+
+        async function runFullTest() {
+            if (isTestRunning) {
+                log('Test already running', 'warning');
+                return;
+            }
+
+            isTestRunning = true;
+            clearLogs();
+
+            // Reset all counters
+            ws1ChunkCount = 0;
+            ws2ChunkCount = 0;
+            ws1MessageCount = 0;
+            ws2MessageCount = 0;
+
+            // Reset all step statuses
+            for (let i = 1; i <= 7; i++) {
+                updateStepStatus(`step${i}`, 'pending');
+            }
+
+            document.getElementById('startTestBtn').disabled = true;
+            document.getElementById('manualBtn').disabled = true;
+
+            try {
+                log('Starting Task Registry Integration Test', 'info');
+                log('=====================================', 'info');
+
+                // Step 1: Create test session
+                const sessionId = await createTestSession();
+
+                // Step 2: Connect WebSocket 1 and send message
+                await connectWebSocket1(sessionId);
+
+                // Wait for some chunks to be received
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // Step 3: Disconnect WebSocket 1 mid-stream
+                disconnectWebSocket1();
+
+                // Wait a moment
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Step 4: Connect WebSocket 2 to same session
+                await connectWebSocket2(sessionId);
+
+                // Wait for stream to complete or timeout
+                await Promise.race([
+                    new Promise(resolve => {
+                        const checkInterval = setInterval(() => {
+                            if (ws2ChunkCount > 20) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 1000);
+                    }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Test timeout')), 30000))
+                ]);
+
+                log('=====================================', 'info');
+                log('Test completed successfully!', 'success');
+                log(`Total chunks: WS1=${ws1ChunkCount}, WS2=${ws2ChunkCount}`, 'info');
+                log(`Message content length: ${messageContent.length} characters`, 'info');
+
+                document.getElementById('testStatus').className = 'status-box success';
+
+            } catch (error) {
+                log(`Test failed: ${error.message}`, 'error');
+                document.getElementById('testStatus').className = 'status-box error';
+
+                // Mark failed steps
+                for (let i = 1; i <= 7; i++) {
+                    const step = document.getElementById(`step${i}`);
+                    if (step.className.includes('pending') || step.className.includes('running')) {
+                        updateStepStatus(`step${i}`, 'error');
+                    }
+                }
+            } finally {
+                // Cleanup
+                if (ws1) ws1.close();
+                if (ws2) ws2.close();
+
+                document.getElementById('startTestBtn').disabled = false;
+                document.getElementById('manualBtn').disabled = false;
+                isTestRunning = false;
+            }
+        }
+
+        async function startManualTest() {
+            log('Manual test mode - use browser developer tools to monitor WebSocket traffic', 'info');
+            clearLogs();
+
+            const sessionId = await createTestSession();
+            log(`Session created: ${sessionId}`, 'success');
+            log(`Open multiple browser tabs and navigate to: http://localhost:5173/projects/test-project/sessions/${sessionId}`, 'info');
+            log('Send a message in one tab, then refresh the page to test reconnection', 'info');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Task Registry Test Interface Ready', 'success');
+            log('Click "Run Full Test Suite" to begin automated testing', 'info');
+        });
+    </script>
+</body>
+</html>

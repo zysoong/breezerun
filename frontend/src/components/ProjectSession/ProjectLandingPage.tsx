@@ -32,44 +32,43 @@ export default function ProjectLandingPage() {
   });
 
   // Create session mutation
-  const createSessionMutation = useMutation({
-    mutationFn: (name: string) => chatSessionsAPI.create(projectId!, { name }),
-    onSuccess: (newSession) => {
-      queryClient.invalidateQueries({ queryKey: ['chatSessions', projectId] });
-      setActiveSession(newSession.id);
-      // Navigate to chat session page
-      navigate(`/projects/${projectId}/chat/${newSession.id}`);
-    },
-  });
+    useMutation({
+        mutationFn: (name: string) => chatSessionsAPI.create(projectId!, { name }),
+        onSuccess: (newSession) => {
+            queryClient.invalidateQueries({ queryKey: ['chatSessions', projectId] });
+            setActiveSession(newSession.id);
+            // Navigate to chat session page
+            navigate(`/projects/${projectId}/chat/${newSession.id}`);
+        },
+    });
 
-  const handleQuickStart = async () => {
-    if (!message.trim() || isSending) return;
+    const handleQuickStart = async () => {
+        if (!message.trim() || isSending) return;
 
-    setIsSending(true);
-    try {
-      // Create new chat session with timestamp
-      const sessionName = `Chat ${new Date().toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`;
+        setIsSending(true);
+        try {
+            // Create new chat session with timestamp
+            const sessionName = `Chat ${new Date().toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            })}`;
 
-      const newSession = await chatSessionsAPI.create(projectId, { name: sessionName });
+            const newSession = await chatSessionsAPI.create(projectId!, { name: sessionName });
 
-      // Store the message to be sent
-      sessionStorage.setItem('pendingMessage', message);
+            // Store the message to be sent
+            sessionStorage.setItem('pendingMessage', message);
 
-      // Navigate to chat session (message will be sent there)
-      setActiveSession(newSession.id);
-      navigate(`/projects/${projectId}/chat/${newSession.id}`);
-    } catch (error) {
-      console.error('Failed to create session:', error);
-      setIsSending(false);
-    }
-  };
-
-  const handleSessionClick = (sessionId: string) => {
+            // Navigate to chat session (message will be sent there)
+            setActiveSession(newSession.id);
+            navigate(`/projects/${projectId}/chat/${newSession.id}`);
+        } catch (error) {
+            console.error('Failed to create session:', error);
+            setIsSending(false);
+        }
+    };
+    const handleSessionClick = (sessionId: string) => {
     setActiveSession(sessionId);
     navigate(`/projects/${projectId}/chat/${sessionId}`);
   };
@@ -187,7 +186,7 @@ export default function ProjectLandingPage() {
           </div>
           {showAgentConfig && (
             <div className="sidebar-section-content">
-              <AgentConfigPanel projectId={projectId} />
+              <AgentConfigPanel projectId={projectId!} />
             </div>
           )}
         </div>
@@ -202,7 +201,7 @@ export default function ProjectLandingPage() {
           </div>
           {showFiles && (
             <div className="sidebar-section-content">
-              <FilePanel projectId={projectId} />
+              <FilePanel projectId={projectId!} />
             </div>
           )}
         </div>
