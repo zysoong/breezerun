@@ -231,8 +231,8 @@ class SandboxContainer:
             Success boolean
         """
         try:
-            # Clean agent workspace and out
-            asyncio.run(self.execute("rm -rf /workspace/agent_workspace/* /workspace/out/*"))
+            # Clean output directory
+            asyncio.run(self.execute("rm -rf /workspace/out/*"))
             return True
         except Exception as e:
             print(f"Error resetting container: {e}")

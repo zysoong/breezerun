@@ -123,7 +123,6 @@ class LocalStorage(WorkspaceStorage):
         def _create():
             workspace.mkdir(parents=True, exist_ok=True)
             (workspace / "project_files").mkdir(exist_ok=True)
-            (workspace / "agent_workspace").mkdir(exist_ok=True)
             (workspace / "out").mkdir(exist_ok=True)
 
         await asyncio.to_thread(_create)

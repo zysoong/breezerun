@@ -148,9 +148,9 @@ class AstGrepTool(Tool):
             ToolParameter(
                 name="path",
                 type="string",
-                description="Directory to search in (default: /workspace/agent_workspace)",
+                description="Directory to search in (default: /workspace/out)",
                 required=False,
-                default="/workspace/agent_workspace",
+                default="/workspace/out",
             ),
             ToolParameter(
                 name="max_results",
@@ -207,7 +207,7 @@ class AstGrepTool(Tool):
         self,
         pattern: str,
         language: Optional[str] = None,
-        path: str = "/workspace/agent_workspace",
+        path: str = "/workspace/out",
         max_results: int = 50,
         **kwargs
     ) -> ToolResult:

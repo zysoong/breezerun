@@ -130,9 +130,9 @@ class UnifiedSearchTool(Tool):
             ToolParameter(
                 name="path",
                 type="string",
-                description="Directory to search (default: /workspace/agent_workspace)",
+                description="Directory to search. Default: /workspace/out. Use /workspace/project_files for user uploads.",
                 required=False,
-                default="/workspace/agent_workspace",
+                default="/workspace/out",
             ),
             ToolParameter(
                 name="max_results",
@@ -187,7 +187,7 @@ class UnifiedSearchTool(Tool):
         query: str,
         mode: Optional[str] = None,
         language: Optional[str] = None,
-        path: str = "/workspace/agent_workspace",
+        path: str = "/workspace/out",
         file_pattern: Optional[str] = None,
         max_results: int = 50,
         **kwargs

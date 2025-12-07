@@ -211,7 +211,7 @@ class S3Storage(WorkspaceStorage):
         """Create workspace structure in S3 (create placeholder objects for directories)."""
         def _create():
             # Create directory placeholders
-            for subdir in ["project_files", "agent_workspace", "out"]:
+            for subdir in ["project_files", "out"]:
                 s3_key = f"workspaces/{session_id}/{subdir}/.keep"
                 self.s3_client.put_object(
                     Bucket=self.bucket_name,

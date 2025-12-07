@@ -359,6 +359,15 @@ class AstEditTool(Tool):
             if not target_path.is_absolute():
                 target_path = Path("/workspace") / path
 
+            # Prevent editing project_files (read-only)
+            if '/project_files' in str(target_path):
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Cannot edit files in /workspace/project_files (read-only). Copy the file to /workspace/out first.",
+                    metadata={"path": str(target_path)},
+                )
+
             # Validate path exists
             exit_code, stdout, _ = await self._container.execute(
                 f"test -e {target_path} && echo 'exists'",

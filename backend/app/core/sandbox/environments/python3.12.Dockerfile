@@ -29,7 +29,6 @@ RUN pip install --no-cache-dir \
 
 # Create workspace structure
 RUN mkdir -p /workspace/project_files \
-    /workspace/agent_workspace \
     /workspace/out
 
 # Set environment variables

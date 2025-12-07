@@ -61,9 +61,9 @@ class SearchTool(Tool):
             ToolParameter(
                 name="path",
                 type="string",
-                description="Directory to search in (default: /workspace/agent_workspace)",
+                description="Directory to search in (default: /workspace/out)",
                 required=False,
-                default="/workspace/agent_workspace",
+                default="/workspace/out",
             ),
             ToolParameter(
                 name="max_results",
@@ -88,7 +88,7 @@ class SearchTool(Tool):
         self,
         pattern: str,
         mode: str = "filename",
-        path: str = "/workspace/agent_workspace",
+        path: str = "/workspace/out",
         max_results: int = 50,
         file_pattern: str = "*",
         **kwargs

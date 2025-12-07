@@ -224,7 +224,7 @@ class VolumeStorage(WorkspaceStorage):
                 # Initialize directory structure
                 self.docker_client.containers.run(
                     "alpine:latest",
-                    command="sh -c 'mkdir -p /workspace/project_files /workspace/agent_workspace /workspace/out'",
+                    command="sh -c 'mkdir -p /workspace/project_files /workspace/out'",
                     volumes={volume_name: {"bind": "/workspace", "mode": "rw"}},
                     remove=True
                 )

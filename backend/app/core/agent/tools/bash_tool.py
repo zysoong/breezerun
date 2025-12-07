@@ -27,7 +27,7 @@ class BashTool(Tool):
             "Execute bash commands in a secure sandbox environment. "
             "Use this tool to: run shell commands, execute scripts, install packages with pip/npm, "
             "compile code, run tests, manage files and directories, check system info, etc. "
-            "Commands run in /workspace/agent_workspace by default. "
+            "Commands run in /workspace/out by default. "
             "Examples: 'ls -la', 'python script.py', 'pip install requests', "
             "'cat file.txt', 'mkdir new_dir', 'git status', 'node app.js', 'pytest tests/'. "
             "Supports pipes, redirects, and multi-line commands. Timeout default: 30s."
@@ -45,9 +45,9 @@ class BashTool(Tool):
             ToolParameter(
                 name="workdir",
                 type="string",
-                description="Working directory for command execution (default: /workspace/agent_workspace)",
+                description="Working directory for command execution (default: /workspace/out)",
                 required=False,
-                default="/workspace/agent_workspace",
+                default="/workspace/out",
             ),
             ToolParameter(
                 name="timeout",
@@ -61,7 +61,7 @@ class BashTool(Tool):
     async def execute(
         self,
         command: str,
-        workdir: str = "/workspace/agent_workspace",
+        workdir: str = "/workspace/out",
         timeout: int = 30,
         **kwargs
     ) -> ToolResult:

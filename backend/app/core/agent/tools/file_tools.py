@@ -437,6 +437,15 @@ class FileEditTool(Tool):
                     metadata={"path": path},
                 )
 
+            # Prevent editing project_files (read-only)
+            if '/project_files' in path:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Cannot edit files in /workspace/project_files (read-only). Copy the file to /workspace/out first.",
+                    metadata={"path": path},
+                )
+
             # Read current file content
             current_content = await self._container.read_file(path)
 
