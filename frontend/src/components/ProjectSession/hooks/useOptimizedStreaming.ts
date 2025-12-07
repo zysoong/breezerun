@@ -196,16 +196,32 @@ export const useOptimizedStreaming = ({
 
       case 'user_text_block':
         // User message received confirmation from server
-        console.log('[WS] user_text_block:', data.block?.id);
+        console.log('[WS] user_text_block:', data.block?.id, 'seq:', data.block?.sequence_number);
         if (data.block) {
           setBlocks(prev => {
-            // Replace temp user block with server block or add new
-            const tempIndex = prev.findIndex(b => b.id.startsWith('temp-user-'));
-            if (tempIndex !== -1) {
+            // Find the LATEST temp user block (most recently added)
+            // Use reverse find to get the last one in case there are multiple
+            const tempBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
+            console.log('[WS] user_text_block - prev has', prev.length, 'blocks,', tempBlocks.length, 'temp blocks');
+            console.log('[WS] user_text_block - temp block ids:', tempBlocks.map(b => b.id));
+
+            if (tempBlocks.length > 0) {
+              // Replace the first temp block (oldest one) since server processes in order
+              const tempIndex = prev.findIndex(b => b.id.startsWith('temp-user-'));
               const updated = [...prev];
+              console.log('[WS] user_text_block - replacing temp block at index', tempIndex, 'with server block');
               updated[tempIndex] = data.block;
               return updated;
             }
+
+            // No temp block found - check if server block already exists
+            const existingIndex = prev.findIndex(b => b.id === data.block.id);
+            if (existingIndex !== -1) {
+              console.log('[WS] user_text_block - server block already exists at index', existingIndex);
+              return prev;
+            }
+
+            console.log('[WS] user_text_block - adding new server block');
             return [...prev, data.block];
           });
         }
@@ -423,6 +439,11 @@ export const useOptimizedStreaming = ({
         setIsStreaming(false);
         setStreamEvents([]);
         queryClient.invalidateQueries({ queryKey: ['contentBlocks', sessionId] });
+        break;
+
+      case 'cancel_acknowledged':
+        // Server acknowledged the cancel request - no action needed
+        console.log('[WS] cancel_acknowledged');
         break;
 
       case 'cancelled':
@@ -652,8 +673,18 @@ export const useOptimizedStreaming = ({
           contentLengths: initialBlocks.map(b => (b.content?.text || '').length)
         });
 
-        // If not streaming, just use initialBlocks directly
+        // Check for temp user blocks that haven't been confirmed by server yet
+        const tempUserBlocks = prev.filter(b => b.id.startsWith('temp-user-'));
+
+        // If not streaming, use initialBlocks but preserve any temp user blocks
         if (!isStreaming) {
+          if (tempUserBlocks.length > 0) {
+            console.log('[useOptimizedStreaming] Not streaming, preserving temp user blocks:', tempUserBlocks.length);
+            // Merge: initialBlocks + temp user blocks (sorted by sequence)
+            const merged = [...initialBlocks, ...tempUserBlocks];
+            merged.sort((a, b) => a.sequence_number - b.sequence_number);
+            return merged;
+          }
           console.log('[useOptimizedStreaming] Not streaming, using initialBlocks directly');
           return initialBlocks;
         }
@@ -713,6 +744,16 @@ export const useOptimizedStreaming = ({
           }
         }
 
+        // Third pass: preserve ALL local blocks that aren't in initialBlocks
+        // This handles: temp user blocks, confirmed user blocks not yet in API, etc.
+        for (const block of prev) {
+          if (!seenIds.has(block.id) && !apiBlockMap.has(block.id)) {
+            console.log('[useOptimizedStreaming] Preserving local block not in API:', block.id, block.block_type);
+            mergedBlocks.push(block);
+            seenIds.add(block.id);
+          }
+        }
+
         // Sort by sequence_number
         mergedBlocks.sort((a, b) => a.sequence_number - b.sequence_number);
 
@@ -739,20 +780,36 @@ export const useOptimizedStreaming = ({
       return false;
     }
 
-    // Add temp user block to local state immediately
-    const tempUserBlock: ContentBlock = {
-      id: 'temp-user-' + Date.now(),
-      chat_session_id: sessionId,
-      sequence_number: blocks.length,
-      block_type: 'user_text',
-      author: 'user',
-      content: { text: content },
-      block_metadata: {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    const tempId = 'temp-user-' + Date.now();
 
-    setBlocks(prev => [...prev, tempUserBlock]);
+    // Add temp user block to local state immediately
+    // Use functional update to get correct sequence number from current state
+    setBlocks(prev => {
+      // Compute max sequence number from current blocks
+      const maxSeq = prev.reduce((max, b) => Math.max(max, b.sequence_number), -1);
+      const newSeqNum = maxSeq + 1;
+
+      console.log('[useOptimizedStreaming] Adding temp user block:', {
+        tempId,
+        newSeqNum,
+        prevBlockCount: prev.length,
+        prevBlockIds: prev.map(b => b.id)
+      });
+
+      const tempUserBlock: ContentBlock = {
+        id: tempId,
+        chat_session_id: sessionId,
+        sequence_number: newSeqNum,
+        block_type: 'user_text',
+        author: 'user',
+        content: { text: content },
+        block_metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      return [...prev, tempUserBlock];
+    });
 
     // Send via WebSocket
     wsRef.current.send(JSON.stringify({
@@ -761,7 +818,7 @@ export const useOptimizedStreaming = ({
     }));
 
     return true;
-  }, [sessionId, blocks.length]);
+  }, [sessionId]);
 
   // Cancel streaming
   const cancelStream = useCallback(() => {
