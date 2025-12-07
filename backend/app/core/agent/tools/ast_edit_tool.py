@@ -134,8 +134,7 @@ class AstEditTool(Tool):
                 name="path",
                 type="string",
                 description=(
-                    "File or directory path. For single file: '/workspace/out/app.py'. "
-                    "For multi-file refactoring: '/workspace/agent_workspace' or '/workspace/out'"
+                    "REQUIRED: File path to edit (e.g., '/workspace/out/main.py')"
                 ),
                 required=True,
             ),
@@ -304,9 +303,9 @@ class AstEditTool(Tool):
 
             return ToolResult(
                 success=True,
-                output=f"Successfully edited {file_path}\n"
-                       f"Replaced {count} occurrence(s) of pattern.\n"
-                       f"(Used text-based editing for non-code file)",
+                output=f"✓ Edited {file_path}\n"
+                       f"Replaced {count} occurrence(s).\n"
+                       f"(text-based editing)",
                 metadata={
                     "file": str(file_path),
                     "occurrences": count,
@@ -326,7 +325,7 @@ class AstEditTool(Tool):
         self,
         pattern: str,
         rewrite: str,
-        path: str,
+        path: Optional[str] = None,
         language: Optional[str] = None,
         file_pattern: Optional[str] = None,
         dry_run: bool = False,
@@ -345,6 +344,15 @@ class AstEditTool(Tool):
         Returns:
             ToolResult with refactoring results
         """
+        # Check if path is provided
+        if not path:
+            return ToolResult(
+                success=False,
+                output="",
+                error="Missing required 'path' parameter. Please specify the file to edit (e.g., path='/workspace/out/main.py').",
+                metadata={"pattern": pattern[:50]},
+            )
+
         try:
             # Resolve path
             target_path = Path(path)
@@ -506,12 +514,15 @@ class AstEditTool(Tool):
 
         return ToolResult(
             success=True,
-            output=f"Successfully refactored {file_path}\nPattern: {pattern}\nRewrite: {rewrite}\n\nChanges applied.",
+            output=f"✓ Edited {file_path}\n"
+                   f"Pattern: {pattern} → {rewrite}\n"
+                   f"(AST editing)",
             metadata={
                 "file": str(file_path),
                 "pattern": pattern,
                 "rewrite": rewrite,
                 "changes": lines_changed,
+                "method": "ast",
             },
         )
 
@@ -603,12 +614,9 @@ class AstEditTool(Tool):
         return ToolResult(
             success=True,
             output=(
-                f"Successfully refactored files in {dir_path}\n"
-                f"Pattern: {pattern}\n"
-                f"Rewrite: {rewrite}\n"
-                f"Language: {language}\n"
-                f"Files scanned: {len(files)}\n\n"
-                f"Changes have been applied."
+                f"✓ Edited {len(files)} file(s) in {dir_path}\n"
+                f"Pattern: {pattern} → {rewrite}\n"
+                f"(AST editing)"
             ),
             metadata={
                 "directory": str(dir_path),
@@ -616,6 +624,7 @@ class AstEditTool(Tool):
                 "rewrite": rewrite,
                 "language": language,
                 "files_scanned": len(files),
+                "method": "ast",
             },
         )
 
