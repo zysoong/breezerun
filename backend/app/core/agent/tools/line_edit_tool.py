@@ -212,15 +212,22 @@ class LineEditTool(Tool):
             total_lines = len(lines)
 
             # 2. Validate and execute command
+            old_content_lines = []
+            new_content_lines = []
+
             if command == "replace":
                 result = self._validate_replace_params(start_line, end_line, new_content, total_lines)
                 if result:
                     return result
 
+                # Capture old content before replacement
+                old_content_lines = lines[start_line - 1:end_line]
+
                 # Apply auto-indent if enabled
                 if auto_indent and new_content:
                     new_content = self._apply_auto_indent(new_content, lines, start_line)
 
+                new_content_lines = new_content.split("\n") if new_content else []
                 new_lines = self._replace_lines(lines, start_line, end_line, new_content)
                 action_desc = f"Replaced lines {start_line}-{end_line}"
 
@@ -234,6 +241,7 @@ class LineEditTool(Tool):
                     target_line = insert_line + 1 if insert_line < total_lines else insert_line
                     new_content = self._apply_auto_indent(new_content, lines, target_line)
 
+                new_content_lines = new_content.split("\n") if new_content else []
                 new_lines = self._insert_lines(lines, insert_line, new_content)
                 action_desc = f"Inserted after line {insert_line}"
 
@@ -242,6 +250,8 @@ class LineEditTool(Tool):
                 if result:
                     return result
 
+                # Capture content being deleted
+                old_content_lines = lines[start_line - 1:end_line]
                 new_lines = self._delete_lines(lines, start_line, end_line)
                 action_desc = f"Deleted lines {start_line}-{end_line}"
 
@@ -269,15 +279,45 @@ class LineEditTool(Tool):
             if not write_result.success:
                 return write_result
 
-            # 5. Return success
+            # 5. Build detailed output
+            output_parts = [
+                f"Successfully edited {path}",
+                f"{action_desc}",
+                f"File now has {len(new_lines)} lines.",
+                "",
+            ]
+
+            # Show what was removed (for replace and delete)
+            if old_content_lines:
+                output_parts.append("--- Removed:")
+                for i, line in enumerate(old_content_lines):
+                    line_num = (start_line or 1) + i
+                    output_parts.append(f"  {line_num:>4}: {line}")
+
+            # Show what was added (for replace and insert)
+            if new_content_lines:
+                output_parts.append("+++ Added:")
+                # Calculate the starting line number for new content
+                if command == "replace":
+                    new_start = start_line
+                elif command == "insert":
+                    new_start = insert_line + 1
+                else:
+                    new_start = 1
+                for i, line in enumerate(new_content_lines):
+                    line_num = new_start + i
+                    output_parts.append(f"  {line_num:>4}: {line}")
+
             return ToolResult(
                 success=True,
-                output=f"Successfully edited {path}\n{action_desc}\nNew file has {len(new_lines)} lines.",
+                output="\n".join(output_parts),
                 metadata={
                     "path": path,
                     "command": command,
                     "lines_before": total_lines,
                     "lines_after": len(new_lines),
+                    "old_content": old_content_lines,
+                    "new_content": new_content_lines,
                 },
             )
 
