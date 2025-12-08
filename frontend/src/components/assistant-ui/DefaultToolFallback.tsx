@@ -97,15 +97,15 @@ export const DefaultToolFallback: React.FC<ToolCallMessagePartProps> = ({
   const hasResult = result !== undefined && result !== null;
   const isBinary = hasResult && typeof result === 'object' && (result as any).is_binary === true;
 
-  // Collapse state - auto-expand if running or has error
-  const [isExpanded, setIsExpanded] = useState(isRunning || isError || false);
+  // Collapse state - auto-expand only if running
+  const [isExpanded, setIsExpanded] = useState(isRunning || false);
 
-  // Auto-expand when tool starts running or encounters error
+  // Auto-expand when tool starts running
   useEffect(() => {
-    if (isRunning || isError) {
+    if (isRunning) {
       setIsExpanded(true);
     }
-  }, [isRunning, isError]);
+  }, [isRunning]);
 
   // Generate summary for collapsed view
   const summary = getToolSummary(toolName, args);

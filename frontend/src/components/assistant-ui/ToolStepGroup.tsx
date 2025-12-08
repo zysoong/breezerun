@@ -9,7 +9,7 @@
  * - Think: reasoning/planning
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { ContentBlock } from '@/types';
 import { DefaultToolFallback } from './DefaultToolFallback';
@@ -131,11 +131,26 @@ function groupToolsIntoSteps(toolBlocks: ContentBlock[]): ToolStep[] {
 const StepComponent: React.FC<{
   step: ToolStep;
   defaultExpanded?: boolean;
-}> = ({ step, defaultExpanded = false }) => {
-  // Auto-expand if has error or is running
+  forceCollapsed?: boolean;
+}> = ({ step, defaultExpanded = false, forceCollapsed = false }) => {
+  // Only expand if running (and not force collapsed) or explicitly defaultExpanded
   const [isExpanded, setIsExpanded] = useState(
-    defaultExpanded || step.hasError || step.isRunning
+    !forceCollapsed && (defaultExpanded || step.isRunning)
   );
+
+  // When forceCollapsed changes, collapse the step
+  useEffect(() => {
+    if (forceCollapsed && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [forceCollapsed]);
+
+  // When step starts running, expand it
+  useEffect(() => {
+    if (step.isRunning && !forceCollapsed) {
+      setIsExpanded(true);
+    }
+  }, [step.isRunning, forceCollapsed]);
 
   // Get step status icon
   const getStatusIcon = () => {
@@ -310,6 +325,9 @@ export const ToolStepGroup: React.FC<ToolStepGroupProps> = ({
     );
   }
 
+  // Find the index of the currently running step (if any)
+  const runningStepIndex = steps.findIndex(s => s.isRunning);
+
   // Group into steps
   return (
     <div className="tool-steps">
@@ -319,6 +337,8 @@ export const ToolStepGroup: React.FC<ToolStepGroupProps> = ({
           step={step}
           // Expand last step by default if streaming
           defaultExpanded={isStreaming && index === steps.length - 1}
+          // Collapse previous steps when a new step is running
+          forceCollapsed={runningStepIndex >= 0 && index < runningStepIndex}
         />
       ))}
     </div>
