@@ -3,12 +3,18 @@
  *
  * This component properly handles streaming of tool arguments and results
  * using assistant-ui's ToolCallMessagePartComponent interface.
+ *
+ * Features:
+ * - Collapsible tool calls (collapsed by default when complete)
+ * - Auto-expand on error or while running
+ * - One-line summary for collapsed state
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ToolCallMessagePartProps } from '@assistant-ui/react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import {ObservationContent} from "@/components/ProjectSession/components/MessageHelpers.tsx";
 
 const getFileExtension = (filePath: string): string => {
@@ -39,6 +45,46 @@ const formatValue = (value: any): string => {
   }
 };
 
+/**
+ * Generate a one-line summary for a tool call based on its name and arguments
+ */
+const getToolSummary = (toolName: string, args: any): string => {
+  if (!args) return '';
+
+  const parsedArgs = typeof args === 'string' ? (() => {
+    try { return JSON.parse(args); } catch { return {}; }
+  })() : args;
+
+  switch (toolName?.toLowerCase()) {
+    case 'file_read':
+      return parsedArgs.path || '';
+    case 'file_write':
+      return parsedArgs.path || parsedArgs.file_path || '';
+    case 'edit_lines': {
+      const path = parsedArgs.path || '';
+      const start = parsedArgs.start_line || '';
+      const end = parsedArgs.end_line || parsedArgs.insert_line || start;
+      const cmd = parsedArgs.command || 'edit';
+      return start ? `${path}:${start}${end && end !== start ? `-${end}` : ''} (${cmd})` : path;
+    }
+    case 'bash': {
+      const cmd = parsedArgs.command || '';
+      return cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
+    }
+    case 'search': {
+      const query = parsedArgs.query || '';
+      const path = parsedArgs.path || '/workspace';
+      return `"${query}" in ${path}`;
+    }
+    case 'setup_environment':
+      return parsedArgs.environment_type || 'setting up...';
+    case 'think':
+      return 'reasoning...';
+    default:
+      return '';
+  }
+};
+
 export const DefaultToolFallback: React.FC<ToolCallMessagePartProps> = ({
   toolName,
   args,
@@ -50,6 +96,19 @@ export const DefaultToolFallback: React.FC<ToolCallMessagePartProps> = ({
   const isRunning = status?.type === 'running';
   const hasResult = result !== undefined && result !== null;
   const isBinary = hasResult && typeof result === 'object' && (result as any).is_binary === true;
+
+  // Collapse state - auto-expand if running or has error
+  const [isExpanded, setIsExpanded] = useState(isRunning || isError || false);
+
+  // Auto-expand when tool starts running or encounters error
+  useEffect(() => {
+    if (isRunning || isError) {
+      setIsExpanded(true);
+    }
+  }, [isRunning, isError]);
+
+  // Generate summary for collapsed view
+  const summary = getToolSummary(toolName, args);
 
   // Special handling for file write operations
   const isFileWrite = toolName && (
@@ -72,207 +131,257 @@ export const DefaultToolFallback: React.FC<ToolCallMessagePartProps> = ({
     }
   }
 
+  // Get status icon
+  const getStatusIcon = () => {
+    if (isRunning) return '⚙️';
+    if (isError) return '❌';
+    if (hasResult) return '✅';
+    return '🔧';
+  };
+
   return (
     <div className="tool-call-container" style={{
-      marginTop: '12px',
-      marginBottom: '12px',
+      marginTop: '8px',
+      marginBottom: '8px',
       borderRadius: '8px',
       overflow: 'hidden',
       border: '1px solid #e5e7eb',
     }}>
-      {/* Tool Header */}
-      <div className="tool-call-header" style={{
-        padding: '12px 16px',
-        background: isRunning
-          ? 'linear-gradient(to right, #fef3c7, #fde68a)'
-          : '#f9fafb',
-        borderBottom: '1px solid #e5e7eb',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}>
-        <span className="tool-icon" style={{ fontSize: '16px' }}>
-          {isRunning ? '⚙️' : '🔧'}
+      {/* Tool Header - Always visible, clickable to expand/collapse */}
+      <div
+        className="tool-call-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          padding: '10px 14px',
+          background: isRunning
+            ? 'linear-gradient(to right, #fef3c7, #fde68a)'
+            : isError
+              ? '#fef2f2'
+              : '#f9fafb',
+          borderBottom: isExpanded ? '1px solid #e5e7eb' : 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        {/* Expand/Collapse chevron */}
+        <span style={{ color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
-        <strong style={{ color: '#111827' }}>
+
+        {/* Status icon */}
+        <span className="tool-icon" style={{ fontSize: '14px' }}>
+          {getStatusIcon()}
+        </span>
+
+        {/* Tool name */}
+        <strong style={{ color: '#111827', fontSize: '13px' }}>
           {toolName}
         </strong>
+
+        {/* Summary (shown when collapsed or always for context) */}
+        {summary && (
+          <span style={{
+            color: '#6b7280',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flex: 1,
+            minWidth: 0,
+          }}>
+            {summary}
+          </span>
+        )}
+
+        {/* Running indicator */}
         {isRunning && (
           <span className="tool-status" style={{
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#92400e',
-            marginLeft: 'auto',
+            fontWeight: 500,
             animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            flexShrink: 0,
           }}>
             Running...
           </span>
         )}
       </div>
 
-      {/* Tool Arguments */}
-      {(args || argsText) && (
-        <div className="tool-call-args" style={{
-          padding: '16px',
-          background: '#ffffff',
-          borderBottom: hasResult ? '1px solid #e5e7eb' : 'none',
-        }}>
-          <div style={{
-            marginBottom: '8px',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: '#6b7280',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}>
-            Arguments {isRunning && !hasResult && '(streaming...)'}
-          </div>
-
-          {isFileWrite && filePath ? (
-            <div>
+      {/* Expandable content */}
+      {isExpanded && (
+        <>
+          {/* Tool Arguments */}
+          {(args || argsText) && (
+            <div className="tool-call-args" style={{
+              padding: '14px',
+              background: '#ffffff',
+              borderBottom: hasResult ? '1px solid #e5e7eb' : 'none',
+            }}>
               <div style={{
                 marginBottom: '8px',
-                fontSize: '14px',
-                color: '#374151',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
               }}>
-                <strong>File:</strong>{' '}
-                <code style={{
-                  padding: '2px 6px',
-                  background: '#f3f4f6',
-                  borderRadius: '4px',
-                  fontFamily: 'monospace',
-                }}>{filePath}</code>
+                Arguments {isRunning && !hasResult && '(streaming...)'}
               </div>
-              {content && (
-                <SyntaxHighlighter
-                  language={getLanguageFromExtension(getFileExtension(filePath))}
-                  style={oneLight}
-                  customStyle={{
-                    margin: '8px 0',
-                    borderRadius: '6px',
+
+              {isFileWrite && filePath ? (
+                <div>
+                  <div style={{
+                    marginBottom: '8px',
                     fontSize: '13px',
-                    maxHeight: '400px',
-                  }}
-                >
-                  {content}
-                </SyntaxHighlighter>
+                    color: '#374151',
+                  }}>
+                    <strong>File:</strong>{' '}
+                    <code style={{
+                      padding: '2px 6px',
+                      background: '#f3f4f6',
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                    }}>{filePath}</code>
+                  </div>
+                  {content && (
+                    <SyntaxHighlighter
+                      language={getLanguageFromExtension(getFileExtension(filePath))}
+                      style={oneLight}
+                      customStyle={{
+                        margin: '8px 0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        maxHeight: '300px',
+                      }}
+                    >
+                      {content}
+                    </SyntaxHighlighter>
+                  )}
+                </div>
+              ) : (
+                <pre style={{
+                  margin: 0,
+                  padding: '10px',
+                  background: '#f9fafb',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  overflow: 'auto',
+                  maxHeight: '200px',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {argsText || formatValue(args)}
+                </pre>
               )}
             </div>
-          ) : (
-            <pre style={{
-              margin: 0,
-              padding: '12px',
-              background: '#f9fafb',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontFamily: 'monospace',
-              overflow: 'auto',
-              maxHeight: '300px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}>
-              {argsText || formatValue(args)}
-            </pre>
           )}
-        </div>
-      )}
 
-      {/* Tool Result */}
-      {hasResult && !isBinary && (
-        <div className="tool-call-result" style={{
-          padding: '16px',
-          background: isError ? '#fef2f2' : '#f0fdf4',
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: '8px',
-          }}>
-            <span style={{ fontSize: '16px' }}>
-              {isError ? '❌' : '✅'}
-            </span>
-            <strong style={{
-              color: isError ? '#991b1b' : '#166534',
-              fontSize: '14px',
+          {/* Tool Result */}
+          {hasResult && !isBinary && (
+            <div className="tool-call-result" style={{
+              padding: '14px',
+              background: isError ? '#fef2f2' : '#f0fdf4',
             }}>
-              {isError ? 'Error' : 'Result'}
-            </strong>
-            {isRunning && (
-              <span style={{
-                fontSize: '12px',
-                color: isError ? '#991b1b' : '#166534',
-                marginLeft: '8px',
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '8px',
               }}>
-                (streaming...)
-              </span>
-            )}
-          </div>
-          <pre style={{
-            margin: 0,
-            padding: '12px',
-            background: '#ffffff',
-            border: `1px solid ${isError ? '#fca5a5' : '#86efac'}`,
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontFamily: 'monospace',
-            overflow: 'auto',
-            maxHeight: '300px',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            color: isError ? '#7f1d1d' : '#14532d',
-          }}>
-            {formatValue(result)}
-          </pre>
-        </div>
-      )}
-
-        {hasResult && isBinary && (
-            <div className={`observation success`}>
-                <ObservationContent
-                    content={(result as any).text || ''}
-                    metadata={result}
-                />
+                <span style={{ fontSize: '14px' }}>
+                  {isError ? '❌' : '✅'}
+                </span>
+                <strong style={{
+                  color: isError ? '#991b1b' : '#166534',
+                  fontSize: '12px',
+                }}>
+                  {isError ? 'Error' : 'Result'}
+                </strong>
+                {isRunning && (
+                  <span style={{
+                    fontSize: '11px',
+                    color: isError ? '#991b1b' : '#166534',
+                    marginLeft: '8px',
+                  }}>
+                    (streaming...)
+                  </span>
+                )}
+              </div>
+              <pre style={{
+                margin: 0,
+                padding: '10px',
+                background: '#ffffff',
+                border: `1px solid ${isError ? '#fca5a5' : '#86efac'}`,
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontFamily: 'monospace',
+                overflow: 'auto',
+                maxHeight: '200px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: isError ? '#7f1d1d' : '#14532d',
+              }}>
+                {formatValue(result)}
+              </pre>
             </div>
-        )}
+          )}
 
-      {/* Incomplete Status */}
-      {status?.type === 'incomplete' && (
-        <div style={{
-          padding: '16px',
-          background: '#fef2f2',
-          borderTop: '1px solid #fca5a5',
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#991b1b',
-          }}>
-            <span>⚠️</span>
-            <strong>Incomplete:</strong>
-            <span>{status.reason}</span>
-          </div>
-        </div>
-      )}
+          {hasResult && isBinary && (
+            <div className={`observation success`}>
+              <ObservationContent
+                content={(result as any).text || ''}
+                metadata={result}
+              />
+            </div>
+          )}
 
-      {/* Requires Action Status */}
-      {status?.type === 'requires-action' && (
-        <div style={{
-          padding: '16px',
-          background: '#fef3c7',
-          borderTop: '1px solid #fcd34d',
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#92400e',
-          }}>
-            <span>⏸️</span>
-            <strong>Action Required:</strong>
-            <span>{status.reason}</span>
-          </div>
-        </div>
+          {/* Incomplete Status */}
+          {status?.type === 'incomplete' && (
+            <div style={{
+              padding: '14px',
+              background: '#fef2f2',
+              borderTop: '1px solid #fca5a5',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#991b1b',
+                fontSize: '13px',
+              }}>
+                <span>⚠️</span>
+                <strong>Incomplete:</strong>
+                <span>{status.reason}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Requires Action Status */}
+          {status?.type === 'requires-action' && (
+            <div style={{
+              padding: '14px',
+              background: '#fef3c7',
+              borderTop: '1px solid #fcd34d',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#92400e',
+                fontSize: '13px',
+              }}>
+                <span>⏸️</span>
+                <strong>Action Required:</strong>
+                <span>{status.reason}</span>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

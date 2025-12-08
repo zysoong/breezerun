@@ -11,9 +11,13 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { DefaultToolFallback } from './DefaultToolFallback';
+import { ToolStepGroup } from './ToolStepGroup';
 import { ContentBlock, StreamEvent } from '@/types';
 
 import type { ToolCallMessagePartStatus } from '@assistant-ui/react';
+
+// Threshold for grouping tools into steps (if more than this many tool calls, group them)
+const STEP_GROUPING_THRESHOLD = 3;
 
 // Simple streaming text component
 const StreamingText: React.FC<{ content: string }> = ({ content }) => {
@@ -302,6 +306,14 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
     return parts;
   }, [block.id, block.created_at, toolBlocks, isStreaming, streamEvents, textContent]);
 
+  // Count tool call parts for determining if we should use step grouping
+  const toolCallCount = useMemo(() => {
+    return toolBlocks.filter(b => b.block_type === 'tool_call').length;
+  }, [toolBlocks]);
+
+  // Use step grouping if we have many tool calls
+  const useStepGrouping = toolCallCount > STEP_GROUPING_THRESHOLD;
+
   const renderPart = (part: any, index: number) => {
     if (part.type === 'text') {
       if (part.isStreaming) {
@@ -360,9 +372,18 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
         );
       }
     } else if (part.type === 'tool-call') {
+      // If using step grouping, tools are rendered separately
+      if (useStepGrouping) return null;
       return <DefaultToolFallback key={part.toolCallId || index} {...part} />;
     }
     return null;
+  };
+
+  // Render text parts only (for step grouping mode)
+  const renderTextParts = () => {
+    return messageParts
+      .filter(part => part.type === 'text')
+      .map((part, index) => renderPart(part, index));
   };
 
   return (
@@ -377,7 +398,20 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
         </div>
         <div className="message-text">
           <div className="message-body">
-            {messageParts.map((part, index) => renderPart(part, index))}
+            {useStepGrouping ? (
+              <>
+                {/* Render text first */}
+                {renderTextParts()}
+                {/* Render grouped tool steps */}
+                <ToolStepGroup
+                  toolBlocks={toolBlocks}
+                  isStreaming={isStreaming}
+                />
+              </>
+            ) : (
+              /* Render all parts inline (text + individual tools) */
+              messageParts.map((part, index) => renderPart(part, index))
+            )}
           </div>
         </div>
       </div>
