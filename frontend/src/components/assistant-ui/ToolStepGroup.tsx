@@ -14,8 +14,21 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 import { ContentBlock } from '@/types';
 import { DefaultToolFallback } from './DefaultToolFallback';
 
+// Streaming tool part from AssistantUIMessage
+interface StreamingToolPart {
+  type: 'tool-call';
+  toolCallId: string;
+  toolName: string;
+  args: any;
+  argsText: string;
+  result?: any;
+  isError?: boolean;
+  status: { type: string };
+}
+
 interface ToolStepGroupProps {
   toolBlocks: ContentBlock[];
+  streamingTools?: StreamingToolPart[];
   isStreaming?: boolean;
 }
 
@@ -274,16 +287,20 @@ const StepComponent: React.FC<{
  */
 export const ToolStepGroup: React.FC<ToolStepGroupProps> = ({
   toolBlocks,
+  streamingTools = [],
   isStreaming = false,
 }) => {
   const steps = useMemo(() => groupToolsIntoSteps(toolBlocks), [toolBlocks]);
 
-  if (steps.length === 0) {
+  // Check if we have streaming tools that aren't persisted yet
+  const hasStreamingTools = streamingTools.length > 0;
+
+  if (steps.length === 0 && !hasStreamingTools) {
     return null;
   }
 
-  // If only 1-2 tool calls total, don't group - show inline
-  const totalTools = steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+  // If only 1-2 tool calls total (including streaming), don't group - show inline
+  const totalTools = steps.reduce((sum, s) => sum + s.toolCalls.length, 0) + streamingTools.length;
   if (totalTools <= 2) {
     return (
       <>
@@ -321,12 +338,29 @@ export const ToolStepGroup: React.FC<ToolStepGroupProps> = ({
             );
           })
         )}
+        {/* Render streaming tools that aren't persisted yet */}
+        {streamingTools.map(tool => (
+          <DefaultToolFallback
+            key={tool.toolCallId}
+            toolCallId={tool.toolCallId}
+            toolName={tool.toolName}
+            args={tool.args}
+            argsText={tool.argsText}
+            result={tool.result}
+            isError={tool.isError}
+            status={tool.status as any}
+            addResult={() => {}}
+          />
+        ))}
       </>
     );
   }
 
   // Find the index of the currently running step (if any)
-  const runningStepIndex = steps.findIndex(s => s.isRunning);
+  // If we have streaming tools, consider them as running
+  const runningStepIndex = hasStreamingTools
+    ? steps.length  // All persisted steps should collapse
+    : steps.findIndex(s => s.isRunning);
 
   // Group into steps
   return (
@@ -335,12 +369,57 @@ export const ToolStepGroup: React.FC<ToolStepGroupProps> = ({
         <StepComponent
           key={step.id}
           step={step}
-          // Expand last step by default if streaming
-          defaultExpanded={isStreaming && index === steps.length - 1}
-          // Collapse previous steps when a new step is running
+          // Expand last step by default if streaming (and no streaming tools)
+          defaultExpanded={isStreaming && !hasStreamingTools && index === steps.length - 1}
+          // Collapse previous steps when a new step is running or streaming tools exist
           forceCollapsed={runningStepIndex >= 0 && index < runningStepIndex}
         />
       ))}
+      {/* Render streaming tools that aren't persisted yet */}
+      {streamingTools.length > 0 && (
+        <div style={{
+          marginBottom: '8px',
+          border: '1px solid #fde68a',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          background: 'linear-gradient(to right, #fef3c7, #fde68a)',
+        }}>
+          <div style={{
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}>
+            <span style={{ fontSize: '14px' }}>⏳</span>
+            <strong style={{ color: '#92400e', fontSize: '13px' }}>
+              Processing...
+            </strong>
+            <span style={{
+              fontSize: '11px',
+              color: '#92400e',
+              fontWeight: 500,
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }}>
+              {streamingTools.length} tool{streamingTools.length !== 1 ? 's' : ''} streaming
+            </span>
+          </div>
+          <div style={{ padding: '8px', background: '#ffffff' }}>
+            {streamingTools.map(tool => (
+              <DefaultToolFallback
+                key={tool.toolCallId}
+                toolCallId={tool.toolCallId}
+                toolName={tool.toolName}
+                args={tool.args}
+                argsText={tool.argsText}
+                result={tool.result}
+                isError={tool.isError}
+                status={tool.status as any}
+                addResult={() => {}}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

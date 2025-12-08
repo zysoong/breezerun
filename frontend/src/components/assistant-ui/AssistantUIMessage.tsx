@@ -92,9 +92,10 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
   const role = block.block_type === 'user_text' ? 'user' : 'assistant';
   const textContent = block.content?.text || '';
 
-  // Build message parts
-  const messageParts = useMemo(() => {
+  // Build message parts and determine text position
+  const { messageParts, showTextAfterTools, streamingToolParts } = useMemo(() => {
     const parts: any[] = [];
+    let textAfterTools = false;
 
     // Step 1: Build streaming tool state from events (latest state for each tool)
     const streamingState = new Map<string, {
@@ -114,6 +115,16 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
       for (const event of streamEvents) {
         if (event.type === 'chunk') {
           streamingText += event.content || '';
+        } else if (event.type === 'action_streaming') {
+          // Tool just started - show it immediately with empty args
+          const key = `${event.tool}-${event.step || 0}`;
+          streamingState.set(key, {
+            toolName: event.tool || 'unknown',
+            argsText: '',
+            args: {},
+            status: 'streaming',
+            step: event.step || 0,
+          });
         } else if (event.type === 'action_args_chunk') {
           const key = `${event.tool}-${event.step || 0}`;
           const argsString = event.partial_args || event.content || '';
@@ -227,9 +238,18 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
       ? Math.min(...toolCallBlocks.map(b => new Date(b.created_at).getTime()))
       : Infinity;
 
-    // Text comes after tools ONLY if the text block was created AFTER the first tool call
-    // This handles the rare case where a summary text block is created after tools
-    const showTextAfterTools = textBlockCreatedAt > firstToolCallTime
+    // Text comes after tools ONLY if the text block was UPDATED AFTER the last tool call completed
+    // This handles the case where a summary text is appended after tools finish
+    const lastToolCallTime = toolCallBlocks.length > 0
+      ? Math.max(...toolCallBlocks.map(b => new Date(b.updated_at || b.created_at).getTime()))
+      : 0;
+
+    // Use updated_at for text block to detect when summary was added
+    const textBlockUpdatedAt = new Date(block.updated_at || block.created_at).getTime();
+
+    // Text comes after tools if the text block was updated after all tool calls
+    textAfterTools = textBlockUpdatedAt > lastToolCallTime
+      && lastToolCallTime > 0
       && fullText.length > 0
       && !isStreaming;  // During streaming, keep current order
 
@@ -293,7 +313,7 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
     };
 
     // Step 4: Add parts in the correct order based on timestamps
-    if (showTextAfterTools) {
+    if (textAfterTools) {
       // Tools first, then text (text is a summary after tool execution)
       addToolParts();
       if (textPart) parts.push(textPart);
@@ -303,8 +323,13 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
       addToolParts();
     }
 
-    return parts;
-  }, [block.id, block.created_at, toolBlocks, isStreaming, streamEvents, textContent]);
+    // Extract streaming-only tool parts for step grouping
+    const streamingToolParts = parts.filter(p =>
+      p.type === 'tool-call' && p.toolCallId?.startsWith('streaming-')
+    );
+
+    return { messageParts: parts, showTextAfterTools: textAfterTools, streamingToolParts };
+  }, [block.id, block.created_at, block.updated_at, toolBlocks, isStreaming, streamEvents, textContent]);
 
   // Count tool call parts for determining if we should use step grouping
   const toolCallCount = useMemo(() => {
@@ -399,15 +424,27 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
         <div className="message-text">
           <div className="message-body">
             {useStepGrouping ? (
-              <>
-                {/* Render text first */}
-                {renderTextParts()}
-                {/* Render grouped tool steps */}
-                <ToolStepGroup
-                  toolBlocks={toolBlocks}
-                  isStreaming={isStreaming}
-                />
-              </>
+              showTextAfterTools ? (
+                <>
+                  {/* Tools first, then text (summary after tool execution) */}
+                  <ToolStepGroup
+                    toolBlocks={toolBlocks}
+                    streamingTools={streamingToolParts}
+                    isStreaming={isStreaming}
+                  />
+                  {renderTextParts()}
+                </>
+              ) : (
+                <>
+                  {/* Text first, then tools (normal flow) */}
+                  {renderTextParts()}
+                  <ToolStepGroup
+                    toolBlocks={toolBlocks}
+                    streamingTools={streamingToolParts}
+                    isStreaming={isStreaming}
+                  />
+                </>
+              )
             ) : (
               /* Render all parts inline (text + individual tools) */
               messageParts.map((part, index) => renderPart(part, index))
