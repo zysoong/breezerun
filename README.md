@@ -25,6 +25,28 @@ BreezeRun is a self-hosted alternative to cloud-based AI coding assistants. It p
 - **Control** - Configure agents, tools, and execution environments per project
 - **Safety** - All code execution happens in sandboxed Docker containers
 
+## Feature Highlights
+
+### Secure Multi-Provider API Key Management
+Store API keys for 10+ LLM providers securely with AES-128 encryption. Keys are never displayed after saving and only decrypted when making API calls.
+
+![API key settings](docs/images/settings-api-keys.png)
+
+### Flexible Project Management
+Organize your work into projects with multiple chat sessions. Configure LLM providers and models per project, upload files, and manage agent settings.
+
+![Project dashboard](docs/images/project-dashboard.png)
+
+### Real-Time Code Execution
+Ask the agent to generate code and see results instantly. The agent sets up the environment, writes code, executes it, and displays output - all in one seamless flow.
+
+![Agent execution](docs/images/agent-execution.png)
+
+### Multi-Step Agent Workflows
+Watch AI agents break down complex tasks into logical steps - setup, edit, run, and read - with full visibility into each action. Download generated files directly from the UI, just like claude.ai.
+
+![Multi-step workflow](docs/images/multi-step-workflow.png)
+
 ## Features
 
 ### Autonomous Agents
