@@ -127,9 +127,11 @@ class TestProjectLifecycle:
         )
         session_id = session_response.json()["id"]
 
-        with patch("app.api.routes.projects.get_container_manager") as mock_container_mgr, \
-             patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage, \
-             patch("app.api.routes.projects.get_file_manager") as mock_file_mgr:
+        with (
+            patch("app.api.routes.projects.get_container_manager") as mock_container_mgr,
+            patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage,
+            patch("app.api.routes.projects.get_file_manager") as mock_file_mgr,
+        ):
 
             mock_destroy = AsyncMock(return_value=True)
             mock_container_mgr.return_value.destroy_container = mock_destroy

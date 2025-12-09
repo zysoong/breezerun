@@ -98,15 +98,22 @@ class SetupEnvironmentTool(Tool):
             # Validate environment type
             valid_types = [
                 # Python
-                "python3.13", "python3.12", "python3.11",
+                "python3.13",
+                "python3.12",
+                "python3.11",
                 # JavaScript/TypeScript
                 "nodejs",
                 # JVM languages
-                "java", "kotlin", "scala",
+                "java",
+                "kotlin",
+                "scala",
                 # Systems languages
-                "go", "rust", "cpp",
+                "go",
+                "rust",
+                "cpp",
                 # Scripting languages
-                "ruby", "php",
+                "ruby",
+                "php",
                 # .NET
                 "dotnet",
             ]

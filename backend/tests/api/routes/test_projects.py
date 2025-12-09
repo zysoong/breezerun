@@ -182,9 +182,11 @@ class TestProjectsAPI:
         await db_session.refresh(session)
         session_id = session.id
 
-        with patch("app.api.routes.projects.get_container_manager") as mock_container_mgr, \
-             patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage, \
-             patch("app.api.routes.projects.get_file_manager") as mock_file_mgr:
+        with (
+            patch("app.api.routes.projects.get_container_manager") as mock_container_mgr,
+            patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage,
+            patch("app.api.routes.projects.get_file_manager") as mock_file_mgr,
+        ):
 
             # Mock container manager - should destroy containers for all sessions
             mock_destroy = AsyncMock(return_value=True)
@@ -233,9 +235,11 @@ class TestProjectsAPI:
             await db_session.refresh(session)
             session_ids.append(session.id)
 
-        with patch("app.api.routes.projects.get_container_manager") as mock_container_mgr, \
-             patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage, \
-             patch("app.api.routes.projects.get_file_manager") as mock_file_mgr:
+        with (
+            patch("app.api.routes.projects.get_container_manager") as mock_container_mgr,
+            patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage,
+            patch("app.api.routes.projects.get_file_manager") as mock_file_mgr,
+        ):
 
             mock_destroy = AsyncMock(return_value=True)
             mock_container_mgr.return_value.destroy_container = mock_destroy
@@ -261,9 +265,11 @@ class TestProjectsAPI:
         """Test that cleanup failures don't prevent project deletion."""
         project_id = sample_project.id
 
-        with patch("app.api.routes.projects.get_container_manager") as mock_container_mgr, \
-             patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage, \
-             patch("app.api.routes.projects.get_file_manager") as mock_file_mgr:
+        with (
+            patch("app.api.routes.projects.get_container_manager") as mock_container_mgr,
+            patch("app.api.routes.projects.get_project_volume_storage") as mock_vol_storage,
+            patch("app.api.routes.projects.get_file_manager") as mock_file_mgr,
+        ):
 
             # Simulate cleanup failures
             mock_container_mgr.return_value.destroy_container = AsyncMock(
