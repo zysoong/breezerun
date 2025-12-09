@@ -2,7 +2,7 @@
 
 # BreezeRun
 
-**Run your code like a breeze** - Self-hosted AI coding assistant with autonomous agents and sandboxed execution
+**Run your code like a breeze** - Self-hosted AI assistant with web interface, integrated autonomous agents and sandboxed execution
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Node.js 18+](https://img.shields.io/badge/node-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
