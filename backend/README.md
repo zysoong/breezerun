@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![LiteLLM](https://img.shields.io/badge/LiteLLM-100%2B_providers-orange)](https://docs.litellm.ai/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 
 </div>
 
@@ -380,3 +381,6 @@ lsof -i :8000
 kill -9 <PID>
 ```
 
+## License
+
+MIT License - see [LICENSE](../LICENSE) for details.

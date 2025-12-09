@@ -7,6 +7,7 @@
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite)](https://vitejs.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 
 </div>
 
@@ -216,3 +217,6 @@ npm run test:e2e:ui
 npm run test:e2e:debug
 ```
 
+## License
+
+MIT License - see [LICENSE](../LICENSE) for details.
