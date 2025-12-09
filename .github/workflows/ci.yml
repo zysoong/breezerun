@@ -50,7 +50,7 @@ jobs:
             venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --with dev --with dev
 
       - name: Check code formatting (Black)
         run: poetry run black --check .
@@ -91,7 +91,7 @@ jobs:
             venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --with dev
 
       - name: Run unit tests with coverage
         run: |
@@ -152,7 +152,7 @@ jobs:
             venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --with dev
 
       - name: Run integration tests with coverage
         run: |
@@ -279,7 +279,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --with dev
 
       - name: Start backend server
         working-directory: backend
