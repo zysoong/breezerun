@@ -3,9 +3,15 @@
  *
  * This component renders ContentBlocks with proper streaming and tool call handling.
  * Uses sequence_number from blocks for ordering, overlays streaming state on top.
+ *
+ * Performance optimizations:
+ * - React.memo with custom comparison to prevent unnecessary re-renders
+ * - Memoized markdown components to avoid recreating on each render
+ * - Lazy syntax highlighting for large code blocks (>500 lines)
+ * - Separate useMemo for streaming vs non-streaming content
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -15,6 +21,9 @@ import { ToolStepGroup } from './ToolStepGroup';
 import { ContentBlock, StreamEvent } from '@/types';
 
 import type { ToolCallMessagePartStatus } from '@assistant-ui/react';
+
+// Threshold for lazy-loading syntax highlighting (in lines)
+const LAZY_HIGHLIGHT_THRESHOLD = 100;
 
 // Threshold for grouping tools into steps (if more than this many tool calls, group them)
 const STEP_GROUPING_THRESHOLD = 3;
@@ -76,6 +85,130 @@ const StreamingText: React.FC<{ content: string }> = ({ content }) => {
   );
 };
 
+/**
+ * LazyCodeBlock - Defers syntax highlighting for large code blocks
+ * Shows plain code immediately, applies highlighting after a delay
+ */
+const LazyCodeBlock: React.FC<{
+  code: string;
+  language: string;
+}> = memo(({ code, language }) => {
+  const lineCount = code.split('\n').length;
+  const isLargeBlock = lineCount > LAZY_HIGHLIGHT_THRESHOLD;
+  const [isHighlighted, setIsHighlighted] = useState(!isLargeBlock);
+
+  useEffect(() => {
+    if (isLargeBlock && !isHighlighted) {
+      // Defer highlighting to next idle period
+      const hasIdleCallback = typeof window !== 'undefined' && 'requestIdleCallback' in window;
+
+      if (hasIdleCallback) {
+        const idleId = window.requestIdleCallback(() => setIsHighlighted(true), { timeout: 1000 });
+        return () => window.cancelIdleCallback(idleId);
+      } else {
+        const timeoutId = setTimeout(() => setIsHighlighted(true), 100);
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [isLargeBlock, isHighlighted]);
+
+  // For very large blocks (>1000 lines), never highlight - too expensive
+  if (lineCount > 1000) {
+    return (
+      <pre style={{
+        backgroundColor: '#fafafa',
+        padding: '12px',
+        borderRadius: '6px',
+        border: '1px solid #e5e7eb',
+        margin: '12px 0',
+        fontSize: '13px',
+        fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+        overflowX: 'auto',
+        whiteSpace: 'pre',
+        lineHeight: '1.5',
+      }}>
+        <code>{code}</code>
+      </pre>
+    );
+  }
+
+  if (!isHighlighted) {
+    // Show plain code while waiting for highlighting
+    return (
+      <pre style={{
+        backgroundColor: '#fafafa',
+        padding: '12px',
+        borderRadius: '6px',
+        border: '1px solid #e5e7eb',
+        margin: '12px 0',
+        fontSize: '13px',
+        fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+        overflowX: 'auto',
+        whiteSpace: 'pre',
+        lineHeight: '1.5',
+      }}>
+        <code>{code}</code>
+      </pre>
+    );
+  }
+
+  return (
+    <SyntaxHighlighter
+      style={oneLight as any}
+      language={language}
+      PreTag="div"
+      customStyle={{
+        margin: '12px 0',
+        borderRadius: '6px',
+        border: '1px solid #e5e7eb',
+        fontSize: '13px',
+      }}
+    >
+      {code}
+    </SyntaxHighlighter>
+  );
+});
+LazyCodeBlock.displayName = 'LazyCodeBlock';
+
+/**
+ * Memoized markdown components - prevents recreation on each render
+ */
+const createMarkdownComponents = () => ({
+  img({ src, alt, ...props }: any) {
+    return (
+      <img
+        src={src}
+        alt={alt || 'Image'}
+        style={{
+          maxWidth: '100%',
+          height: 'auto',
+          borderRadius: '8px',
+          display: 'block',
+          margin: '12px 0',
+        }}
+        {...props}
+      />
+    );
+  },
+  code({ className, children, ...props }: any) {
+    const match = /language-(\w+)/.exec(className || '');
+    const language = match ? match[1] : '';
+    const isInline = !props.node || props.node.position?.start.line === props.node.position?.end.line;
+    const code = String(children).replace(/\n$/, '');
+
+    return !isInline && language ? (
+      <LazyCodeBlock code={code} language={language} />
+    ) : (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  }
+});
+
+// Create once at module level - never recreated
+const markdownComponents = createMarkdownComponents();
+
 interface AssistantUIMessageProps {
   block: ContentBlock;
   textBlocks?: ContentBlock[];  // All text blocks in this response (for multi-block support)
@@ -84,7 +217,40 @@ interface AssistantUIMessageProps {
   streamEvents?: StreamEvent[];
 }
 
-export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
+/**
+ * Custom comparison function for React.memo
+ * Only memoize NON-streaming messages. Streaming messages always re-render.
+ * This prevents expensive re-renders of completed messages with large code blocks.
+ */
+const arePropsEqual = (
+  prevProps: AssistantUIMessageProps,
+  nextProps: AssistantUIMessageProps
+): boolean => {
+  // ALWAYS re-render streaming messages - they need live updates
+  if (nextProps.isStreaming || prevProps.isStreaming) {
+    return false;
+  }
+
+  // For non-streaming messages, compare block IDs and content
+  // Compare main block
+  if (prevProps.block.id !== nextProps.block.id) return false;
+  if (prevProps.block.content?.text !== nextProps.block.content?.text) return false;
+
+  // Compare text blocks count
+  if (prevProps.textBlocks?.length !== nextProps.textBlocks?.length) return false;
+
+  // Compare tool blocks count
+  if (prevProps.toolBlocks?.length !== nextProps.toolBlocks?.length) return false;
+
+  // Check if any tool results changed (new results added)
+  const prevToolResults = prevProps.toolBlocks?.filter(b => b.block_type === 'tool_result').length || 0;
+  const nextToolResults = nextProps.toolBlocks?.filter(b => b.block_type === 'tool_result').length || 0;
+  if (prevToolResults !== nextToolResults) return false;
+
+  return true;
+};
+
+const AssistantUIMessageInner: React.FC<AssistantUIMessageProps> = ({
   block,
   textBlocks = [],
   toolBlocks = [],
@@ -386,7 +552,7 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
   // Use step grouping if we have many tool calls
   const useStepGrouping = toolCallCount > STEP_GROUPING_THRESHOLD;
 
-  const renderPart = (part: any, index: number) => {
+  const renderPart = useCallback((part: any, index: number) => {
     if (part.type === 'text') {
       if (part.isStreaming) {
         return <StreamingText key={index} content={part.content} />;
@@ -395,49 +561,7 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
           <ReactMarkdown
             key={index}
             remarkPlugins={[remarkGfm]}
-            components={{
-              img({ src, alt, ...props }: any) {
-                return (
-                  <img
-                    src={src}
-                    alt={alt || 'Image'}
-                    style={{
-                      maxWidth: '100%',
-                      height: 'auto',
-                      borderRadius: '8px',
-                      display: 'block',
-                      margin: '12px 0',
-                    }}
-                    {...props}
-                  />
-                );
-              },
-              code({ className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                const language = match ? match[1] : '';
-                const isInline = !props.node || props.node.position?.start.line === props.node.position?.end.line;
-
-                return !isInline && language ? (
-                  <SyntaxHighlighter
-                    style={oneLight as any}
-                    language={language}
-                    PreTag="div"
-                    customStyle={{
-                      margin: '12px 0',
-                      borderRadius: '6px',
-                      border: '1px solid #e5e7eb',
-                      fontSize: '13px',
-                    }}
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
+            components={markdownComponents}
           >
             {part.content}
           </ReactMarkdown>
@@ -449,7 +573,7 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
       return <DefaultToolFallback key={part.toolCallId || index} {...part} />;
     }
     return null;
-  };
+  }, [useStepGrouping]);
 
   // For step grouping, we need to group consecutive tool calls into ToolStepGroup components
   // while preserving text block positions in the sequence
@@ -532,3 +656,6 @@ export const AssistantUIMessage: React.FC<AssistantUIMessageProps> = ({
     </div>
   );
 };
+
+// Export memoized version with custom comparison
+export const AssistantUIMessage = memo(AssistantUIMessageInner, arePropsEqual);
