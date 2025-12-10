@@ -52,6 +52,44 @@ Agents tackle challenging tasks like video encoding with FFmpeg, automatically r
 
 ![Complex workflow](docs/images/complex-workflow.png)
 
+## Quick Start
+
+The easiest way to get started is using our setup scripts that automatically install all dependencies:
+
+**macOS / Linux:**
+```bash
+git clone https://github.com/zysoong/breezerun.git
+cd breezerun
+chmod +x setup.sh
+./setup.sh
+```
+
+**Windows (PowerShell as Administrator):**
+```powershell
+git clone https://github.com/zysoong/breezerun.git
+cd breezerun
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+The setup script will:
+- Install Python, Node.js, and Poetry (if not present)
+- Install all backend and frontend dependencies
+- Create `.env` file with auto-generated encryption key
+- Optionally build Docker sandbox images
+
+Then start the servers:
+```bash
+# Terminal 1: Start backend
+cd backend
+poetry run python -m app.main
+
+# Terminal 2: Start frontend
+cd frontend
+npm run dev
+
+# Open http://localhost:5173
+```
+
 ## Features
 
 ### Autonomous Agents
@@ -102,43 +140,18 @@ Use any LLM via LiteLLM:
 - Ollama
 - Groq, Together, and 100+ more
 
-## Quick Start
+## Manual Installation
+
+If you prefer manual setup instead of using the setup scripts:
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Node.js 18+
 - Docker 20.10+ (optional, for sandboxed execution)
 - An LLM API key (OpenAI, Anthropic, etc.)
 
-### Automated Setup (Recommended)
-
-The easiest way to get started is using our setup scripts that automatically install all dependencies:
-
-**macOS / Linux:**
-```bash
-git clone https://github.com/zysoong/breezerun.git
-cd breezerun
-chmod +x setup.sh
-./setup.sh
-```
-
-**Windows (PowerShell as Administrator):**
-```powershell
-git clone https://github.com/zysoong/breezerun.git
-cd breezerun
-powershell -ExecutionPolicy Bypass -File setup.ps1
-```
-
-The setup script will:
-- Install Python, Node.js, and Poetry (if not present)
-- Install all backend and frontend dependencies
-- Create `.env` file with auto-generated encryption key
-- Optionally build Docker sandbox images
-
-### Manual Installation
-
-If you prefer manual setup:
+### Steps
 
 ```bash
 # Clone the repository
