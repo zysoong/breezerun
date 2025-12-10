@@ -1,6 +1,6 @@
 #!/bin/bash
-# BreezeRun Setup Script for macOS and Linux
-# This script sets up the complete development environment
+# BreezeRun Start Script for macOS and Linux
+# This script sets up the environment and starts the services
 
 set -e
 
@@ -335,10 +335,14 @@ main() {
 
     # Parse arguments
     SKIP_DOCKER=false
+    START_SERVICES=true  # Default: start services after setup
     for arg in "$@"; do
         case $arg in
             --skip-docker)
                 SKIP_DOCKER=true
+                ;;
+            --no-start)
+                START_SERVICES=false
                 ;;
         esac
     done
@@ -363,7 +367,71 @@ main() {
     fi
 
     verify_installation
-    print_usage
+
+    if [[ "$START_SERVICES" == true ]]; then
+        start_services
+    else
+        print_usage
+    fi
+}
+
+# Start backend and frontend services
+start_services() {
+    print_step "Starting BreezeRun services..."
+
+    # Ensure Poetry is in PATH
+    export PATH="$HOME/.local/bin:$PATH"
+
+    # Start backend in background
+    print_step "Starting backend server..."
+    cd backend
+    poetry run python -m app.main &
+    BACKEND_PID=$!
+    cd ..
+
+    # Wait for backend to be ready
+    print_step "Waiting for backend to start..."
+    for i in {1..30}; do
+        if curl -s http://localhost:8000/ > /dev/null 2>&1; then
+            print_success "Backend is running at http://localhost:8000"
+            break
+        fi
+        sleep 1
+    done
+
+    # Start frontend in background
+    print_step "Starting frontend server..."
+    cd frontend
+    npm run dev &
+    FRONTEND_PID=$!
+    cd ..
+
+    # Wait for frontend to be ready
+    print_step "Waiting for frontend to start..."
+    for i in {1..30}; do
+        if curl -s http://localhost:5173/ > /dev/null 2>&1; then
+            print_success "Frontend is running at http://localhost:5173"
+            break
+        fi
+        sleep 1
+    done
+
+    echo ""
+    echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}                BreezeRun is running!                        ${NC}"
+    echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "  Backend:  http://localhost:8000"
+    echo "  Frontend: http://localhost:5173"
+    echo ""
+    echo "  Press Ctrl+C to stop all services"
+    echo ""
+
+    # Handle Ctrl+C to kill both processes
+    trap "echo ''; print_step 'Stopping services...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0" SIGINT SIGTERM
+
+    # Wait for processes
+    wait
 }
 
 main "$@"

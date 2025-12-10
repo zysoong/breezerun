@@ -1,11 +1,11 @@
-name: Test Setup Scripts
+name: Test Start Scripts
 
 on:
   push:
     branches: [main, develop, feature/*]
     paths:
-      - 'setup.sh'
-      - 'setup.ps1'
+      - 'start.sh'
+      - 'start.ps1'
       - '.github/workflows/setup-test.yml'
       - 'backend/pyproject.toml'
       - 'backend/poetry.lock'
@@ -24,7 +24,7 @@ jobs:
   # Test on Ubuntu Linux
   # ============================================
   test-linux:
-    name: Test Setup - Linux (Ubuntu)
+    name: Test Start - Linux (Ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,10 +32,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run setup script
+      - name: Run start script
         run: |
-          chmod +x setup.sh
-          ./setup.sh --skip-docker
+          chmod +x start.sh
+          ./start.sh --skip-docker --no-start
 
       - name: Verify Python installation
         run: python3 --version
@@ -94,7 +94,7 @@ jobs:
   # Test on macOS
   # ============================================
   test-macos:
-    name: Test Setup - macOS
+    name: Test Start - macOS
     runs-on: macos-latest
     timeout-minutes: 30
 
@@ -102,10 +102,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run setup script
+      - name: Run start script
         run: |
-          chmod +x setup.sh
-          ./setup.sh --skip-docker
+          chmod +x start.sh
+          ./start.sh --skip-docker --no-start
 
       - name: Verify Python installation
         run: python3 --version
@@ -164,7 +164,7 @@ jobs:
   # Test on Windows
   # ============================================
   test-windows:
-    name: Test Setup - Windows
+    name: Test Start - Windows
     runs-on: windows-latest
     timeout-minutes: 45
 

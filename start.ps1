@@ -1,9 +1,10 @@
-# BreezeRun Setup Script for Windows (PowerShell)
-# This script sets up the complete development environment
-# Run with: powershell -ExecutionPolicy Bypass -File setup.ps1
+# BreezeRun Start Script for Windows (PowerShell)
+# This script sets up the environment and starts the services
+# Run with: powershell -ExecutionPolicy Bypass -File start.ps1
 
 param(
-    [switch]$SkipDocker
+    [switch]$SkipDocker,
+    [switch]$NoStart
 )
 
 $ErrorActionPreference = "Stop"
@@ -334,7 +335,84 @@ function Main {
     }
 
     Test-Installation
-    Write-Usage
+
+    if ($NoStart) {
+        Write-Usage
+    } else {
+        Start-Services
+    }
+}
+
+function Start-Services {
+    Write-Step "Starting BreezeRun services..."
+
+    # Add Poetry to PATH
+    $poetryPath = "$env:APPDATA\Python\Scripts"
+    if (Test-Path $poetryPath) {
+        $env:Path += ";$poetryPath"
+    }
+
+    # Get script directory
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if (-not $scriptDir) {
+        $scriptDir = Get-Location
+    }
+
+    # Start backend in a new window
+    Write-Step "Starting backend server..."
+    $backendJob = Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend'; poetry run python -m app.main" -PassThru
+
+    # Wait for backend to be ready
+    Write-Step "Waiting for backend to start..."
+    $backendReady = $false
+    for ($i = 1; $i -le 30; $i++) {
+        Start-Sleep -Seconds 1
+        try {
+            $response = Invoke-WebRequest -Uri http://localhost:8000/ -UseBasicParsing -TimeoutSec 2
+            if ($response.StatusCode -eq 200) {
+                Write-Success "Backend is running at http://localhost:8000"
+                $backendReady = $true
+                break
+            }
+        } catch {
+            # Still waiting...
+        }
+    }
+
+    # Start frontend in a new window
+    Write-Step "Starting frontend server..."
+    $frontendJob = Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\frontend'; npm run dev" -PassThru
+
+    # Wait for frontend to be ready
+    Write-Step "Waiting for frontend to start..."
+    $frontendReady = $false
+    for ($i = 1; $i -le 30; $i++) {
+        Start-Sleep -Seconds 1
+        try {
+            $response = Invoke-WebRequest -Uri http://localhost:5173/ -UseBasicParsing -TimeoutSec 2
+            if ($response.StatusCode -eq 200) {
+                Write-Success "Frontend is running at http://localhost:5173"
+                $frontendReady = $true
+                break
+            }
+        } catch {
+            # Still waiting...
+        }
+    }
+
+    Write-Host ""
+    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "                BreezeRun is running!                        " -ForegroundColor Green
+    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Backend:  http://localhost:8000"
+    Write-Host "  Frontend: http://localhost:5173"
+    Write-Host ""
+    Write-Host "  Close the terminal windows to stop the services"
+    Write-Host ""
+
+    # Open browser
+    Start-Process "http://localhost:5173"
 }
 
 Main

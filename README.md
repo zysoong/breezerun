@@ -54,30 +54,42 @@ Agents tackle challenging tasks like video encoding with FFmpeg, automatically r
 
 ## Quick Start
 
-The easiest way to get started is using our setup scripts that automatically install all dependencies:
+The easiest way to get started is using our start scripts that automatically install all dependencies and start the services:
 
 **macOS / Linux:**
 ```bash
 git clone https://github.com/zysoong/breezerun.git
 cd breezerun
-chmod +x setup.sh
-./setup.sh
+chmod +x start.sh
+./start.sh
 ```
 
 **Windows (PowerShell as Administrator):**
 ```powershell
 git clone https://github.com/zysoong/breezerun.git
 cd breezerun
-powershell -ExecutionPolicy Bypass -File setup.ps1
+powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-The setup script will:
-- Install Python, Node.js, and Poetry (if not present)
+The start script will:
+- Install Python, Node.js, Poetry, and Docker (if not present)
 - Install all backend and frontend dependencies
 - Create `.env` file with auto-generated encryption key
-- Optionally build Docker sandbox images
+- Build Docker sandbox images (use `--skip-docker` to skip)
+- Start both backend and frontend servers
 
-Then start the servers:
+Then open http://localhost:5173 in your browser.
+
+**Setup only (without starting services):**
+```bash
+# macOS / Linux
+./start.sh --no-start
+
+# Windows
+powershell -ExecutionPolicy Bypass -File start.ps1 -NoStart
+```
+
+Then start the servers manually:
 ```bash
 # Terminal 1: Start backend
 cd backend
@@ -86,8 +98,6 @@ poetry run python -m app.main
 # Terminal 2: Start frontend
 cd frontend
 npm run dev
-
-# Open http://localhost:5173
 ```
 
 ## Features
