@@ -2,17 +2,13 @@ name: Test Setup Scripts
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, feature/*]
     paths:
       - 'setup.sh'
       - 'setup.ps1'
       - '.github/workflows/setup-test.yml'
   pull_request:
     branches: [main, develop]
-    paths:
-      - 'setup.sh'
-      - 'setup.ps1'
-      - '.github/workflows/setup-test.yml'
   workflow_dispatch:  # Allow manual triggering
 
 env:
