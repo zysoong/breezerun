@@ -15,10 +15,10 @@ $NODE_VERSION = "20"
 
 function Write-Header {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║                    BreezeRun Setup                         ║" -ForegroundColor Blue
-    Write-Host "║         Run your code like a breeze                        ║" -ForegroundColor Blue
-    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host "+=============================================================+" -ForegroundColor Blue
+    Write-Host "|                    BreezeRun Setup                          |" -ForegroundColor Blue
+    Write-Host "|         Run your code like a breeze                         |" -ForegroundColor Blue
+    Write-Host "+=============================================================+" -ForegroundColor Blue
     Write-Host ""
 }
 
@@ -278,9 +278,9 @@ function Test-Installation {
 
 function Write-Usage {
     Write-Host ""
-    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
     Write-Host "                    Setup Complete!                          " -ForegroundColor Green
-    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "To start BreezeRun:"
     Write-Host ""
@@ -401,9 +401,9 @@ function Start-Services {
     }
 
     Write-Host ""
-    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
     Write-Host "                BreezeRun is running!                        " -ForegroundColor Green
-    Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Backend:  http://localhost:8000"
     Write-Host "  Frontend: http://localhost:5173"
