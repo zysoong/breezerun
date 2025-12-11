@@ -244,13 +244,52 @@ function Setup-Backend {
     Push-Location (Join-Path $script:ScriptDir "backend")
 
     try {
+        # CRITICAL: Temporarily modify PATH to prioritize embedded Python
+        # This prevents Poetry from finding WindowsApps stub or other system Python
+        $originalPath = $env:Path
+        $env:Path = "$PythonDir;$PythonDir\Scripts;$env:Path"
+        Write-Step "Temporarily added embedded Python to PATH"
+
+        # Remove any existing .venv that might reference wrong Python
+        if (Test-Path ".venv") {
+            Write-Step "Removing existing .venv to ensure clean setup..."
+            Remove-Item -Recurse -Force ".venv" -ErrorAction SilentlyContinue
+        }
+
         # Configure Poetry to create virtualenv in project directory
         Write-Step "Configuring Poetry..."
         & $PoetryExe config virtualenvs.in-project true --local
 
-        # Tell Poetry to use our embedded Python
-        Write-Step "Setting Poetry to use embedded Python..."
+        # Clear any cached Poetry environments for this project
+        $poetryCacheDirs = @(
+            "$env:LOCALAPPDATA\pypoetry\virtualenvs",
+            "$env:APPDATA\pypoetry\virtualenvs"
+        )
+        foreach ($cacheDir in $poetryCacheDirs) {
+            if (Test-Path $cacheDir) {
+                $projectName = "backend"
+                $oldEnvs = Get-ChildItem -Path $cacheDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "$projectName-*" }
+                foreach ($oldEnv in $oldEnvs) {
+                    Write-Step "Removing cached virtualenv: $($oldEnv.Name)"
+                    Remove-Item -Recurse -Force $oldEnv.FullName -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        # Tell Poetry to use our embedded Python explicitly
+        Write-Step "Setting Poetry to use embedded Python: $PythonExe"
         & $PoetryExe env use $PythonExe
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "poetry env use failed, trying alternative method..."
+            # Alternative: set POETRY_PYTHON environment variable
+            $env:POETRY_PYTHON = $PythonExe
+        }
+
+        # Verify Poetry is using correct Python before installing
+        Write-Step "Verifying Poetry Python configuration..."
+        $poetryEnvInfo = & $PoetryExe env info 2>&1
+        Write-Host $poetryEnvInfo
 
         # Install dependencies using embedded Poetry
         Write-Step "Installing backend dependencies (this may take a few minutes)..."
@@ -258,6 +297,8 @@ function Setup-Backend {
 
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to install backend dependencies"
+            # Restore PATH before exiting
+            $env:Path = $originalPath
             Pop-Location
             exit 1
         }
@@ -307,6 +348,10 @@ MASTER_ENCRYPTION_KEY=$encryptionKey
         Write-Success "Backend setup complete"
     }
     finally {
+        # Always restore original PATH
+        if ($originalPath) {
+            $env:Path = $originalPath
+        }
         Pop-Location
     }
 }
@@ -441,6 +486,10 @@ function Write-Usage {
 function Start-Services {
     Write-Step "Starting BreezeRun services..."
 
+    # Temporarily modify PATH for verification
+    $originalPath = $env:Path
+    $env:Path = "$PythonDir;$PythonDir\Scripts;$NodeDir;$env:Path"
+
     # Verify Poetry can run Python in the backend directory
     Write-Step "Verifying Poetry environment..."
     Push-Location (Join-Path $script:ScriptDir "backend")
@@ -449,19 +498,24 @@ function Start-Services {
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Poetry cannot run Python. Error: $testResult"
             Pop-Location
+            $env:Path = $originalPath
             return
         }
         Write-Success "Poetry Python is working: $testResult"
     } catch {
         Write-Error "Failed to verify Poetry environment: $_"
         Pop-Location
+        $env:Path = $originalPath
         return
     }
     Pop-Location
 
-    # Start backend in a new window
+    # Restore PATH
+    $env:Path = $originalPath
+
+    # Start backend in a new window - include PATH modification in the spawned shell
     Write-Step "Starting backend server..."
-    $backendCmd = "cd '$($script:ScriptDir)\backend'; & '$PoetryExe' run python -m app.main"
+    $backendCmd = "`$env:Path = '$PythonDir;$PythonDir\Scripts;' + `$env:Path; cd '$($script:ScriptDir)\backend'; & '$PoetryExe' run python -m app.main"
     Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $backendCmd
 
     # Wait for backend to be ready
@@ -489,9 +543,9 @@ function Start-Services {
         Write-Warning "Check the backend terminal window for errors."
     }
 
-    # Start frontend in a new window
+    # Start frontend in a new window - include PATH modification in the spawned shell
     Write-Step "Starting frontend server..."
-    $frontendCmd = "cd '$($script:ScriptDir)\frontend'; & '$NpmCmd' run dev"
+    $frontendCmd = "`$env:Path = '$NodeDir;' + `$env:Path; cd '$($script:ScriptDir)\frontend'; & '$NpmCmd' run dev"
     Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $frontendCmd
 
     # Wait for frontend to be ready
