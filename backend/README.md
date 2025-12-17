@@ -1,4 +1,4 @@
-# Open Claude UI Backend
+# Open Claude Pilot Backend
 
 <div align="center">
 
@@ -15,7 +15,7 @@
 
 ## Overview
 
-The Open Claude UI backend powers the chatbot with a ReAct-based agent system and sandboxed code execution. It supports 100+ LLM providers via LiteLLM and executes code safely in isolated Docker containers.
+The Open Claude Pilot backend powers the chatbot with a ReAct-based agent system and sandboxed code execution. It supports 100+ LLM providers via LiteLLM and executes code safely in isolated Docker containers.
 
 ## Features
 
@@ -91,8 +91,8 @@ poetry run python -m app.main
 ### Docker
 
 ```bash
-docker build -t open-claude-ui-backend .
-docker run -p 8000:8000 --env-file .env -v /var/run/docker.sock:/var/run/docker.sock open-claude-ui-backend
+docker build -t open-claude-pilot-backend .
+docker run -p 8000:8000 --env-file .env -v /var/run/docker.sock:/var/run/docker.sock open-claude-pilot-backend
 ```
 
 ## Configuration
@@ -107,7 +107,7 @@ GOOGLE_API_KEY=...
 GROQ_API_KEY=...
 
 # Database
-DATABASE_URL=sqlite+aiosqlite:///./data/open-claude-ui.db
+DATABASE_URL=sqlite+aiosqlite:///./data/open-claude-pilot.db
 
 # Security
 SECRET_KEY=your-secret-key
@@ -371,7 +371,7 @@ newgrp docker
 
 ```bash
 # Enable WAL mode
-sqlite3 data/open-claude-ui.db "PRAGMA journal_mode=WAL;"
+sqlite3 data/open-claude-pilot.db "PRAGMA journal_mode=WAL;"
 ```
 
 ### Port in Use

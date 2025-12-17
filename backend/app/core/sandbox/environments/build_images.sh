@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Build all environment images for Open Claude UI sandbox
+# Build all environment images for Open Claude Pilot sandbox
 # Run this script from the environments directory
 
 set -e
 
 echo "=========================================="
-echo "Building Open Claude UI Sandbox Images"
+echo "Building Open Claude Pilot Sandbox Images"
 echo "=========================================="
 
 # Python environments

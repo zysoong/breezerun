@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright Configuration for Open Claude UI Frontend
+ * Playwright Configuration for Open Claude Pilot Frontend
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({

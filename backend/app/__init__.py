@@ -1,3 +1,3 @@
-"""Open Claude UI Backend Application."""
+"""Open Claude Pilot Backend Application."""
 
 __version__ = "0.1.0"

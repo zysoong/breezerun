@@ -1,4 +1,4 @@
-# Open Claude UI Frontend
+# Open Claude Pilot Frontend
 
 <div align="center">
 
@@ -15,7 +15,7 @@
 
 ## Overview
 
-The Open Claude UI frontend provides a real-time chat interface for interacting with autonomous AI coding agents. The clean design is inspired by the Claude web interface. Built with React and TypeScript, it features optimized streaming, virtual scrolling, and rich tool visualization.
+The Open Claude Pilot frontend provides a real-time chat interface for interacting with autonomous AI coding agents. The clean design is inspired by the Claude web interface. Built with React and TypeScript, it features optimized streaming, virtual scrolling, and rich tool visualization.
 
 ## Features
 

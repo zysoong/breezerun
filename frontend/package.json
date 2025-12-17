@@ -1,7 +1,7 @@
 {
-  "name": "open-claude-ui-frontend",
+  "name": "open-claude-pilot-frontend",
   "version": "0.1.0",
-  "description": "Frontend for Open Claude UI - Self-hosted Claude interface",
+  "description": "Frontend for Open Claude Pilot - Self-hosted Claude interface",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {

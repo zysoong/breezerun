@@ -1,1 +1,1 @@
-# Test suite for Open Claude UI Backend
+# Test suite for Open Claude Pilot Backend

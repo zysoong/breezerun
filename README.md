@@ -1,6 +1,8 @@
 <div align="center">
 
-# Open Claude UI
+<img src="docs/images/logo.png" alt="Open Claude Pilot Logo" width="120">
+
+# Open Claude Pilot
 
 **Self-hosted AI chatbot** - Web interface with integrated coding agents and sandboxed code execution (UI inspired by Claude)
 
@@ -15,9 +17,9 @@
 
 ---
 
-## What is Open Claude UI?
+## What is Open Claude Pilot?
 
-Open Claude UI is a self-hosted AI chatbot with integrated coding agents. It features autonomous AI agents that can write, execute, and debug code in isolated Docker containers. The clean, intuitive interface is inspired by the Claude web UI, bringing a familiar chat experience to your own infrastructure.
+Open Claude Pilot is a self-hosted AI chatbot with integrated coding agents. It features autonomous AI agents that can write, execute, and debug code in isolated Docker containers. The clean, intuitive interface is inspired by the Claude web UI, bringing a familiar chat experience to your own infrastructure.
 
 **Key benefits:**
 - **Privacy** - Your code stays on your infrastructure
@@ -58,16 +60,16 @@ The easiest way to get started is using our start scripts that automatically ins
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/zysoong/open-claude-ui.git
-cd open-claude-ui
+git clone https://github.com/zysoong/open-claude-pilot.git
+cd open-claude-pilot
 chmod +x start.sh
 ./start.sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/zysoong/open-claude-ui.git
-cd open-claude-ui
+git clone https://github.com/zysoong/open-claude-pilot.git
+cd open-claude-pilot
 powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
@@ -180,8 +182,8 @@ If you prefer manual setup instead of using the setup scripts:
 
 ```bash
 # Clone the repository
-git clone https://github.com/zysoong/open-claude-ui.git
-cd open-claude-ui
+git clone https://github.com/zysoong/open-claude-pilot.git
+cd open-claude-pilot
 
 # Backend setup
 cd backend
@@ -281,7 +283,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Related Projects
 
-Open Claude UI draws inspiration from:
+Open Claude Pilot draws inspiration from:
 
 - [OpenHands](https://github.com/All-Hands-AI/OpenHands) - Open-source AI software engineers
 - [Aider](https://aider.chat) - AI pair programming in terminal
@@ -295,6 +297,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**[Get Started](#quick-start)** · **[Report Bug](https://github.com/zysoong/open-claude-ui/issues)** · **[Request Feature](https://github.com/zysoong/open-claude-ui/issues)**
+**[Get Started](#quick-start)** · **[Report Bug](https://github.com/zysoong/open-claude-pilot/issues)** · **[Request Feature](https://github.com/zysoong/open-claude-pilot/issues)**
 
 </div>

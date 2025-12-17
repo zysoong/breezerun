@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "open-claude-ui-backend"
+name = "open-claude-pilot-backend"
 version = "0.1.0"
-description = "Open Claude UI - Self-hosted Claude interface"
+description = "Open Claude Pilot - Self-hosted Claude interface"
 authors = ["Ziyang Song <soongziyang@gmail.com>"]
 readme = "README.md"
 package-mode = false

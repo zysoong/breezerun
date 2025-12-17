@@ -25,7 +25,7 @@ class TestProjectLifecycle:
         response = await client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["name"] == "Open Claude UI Backend"
+        assert data["name"] == "Open Claude Pilot Backend"
         assert data["status"] == "running"
 
     @pytest.mark.asyncio
